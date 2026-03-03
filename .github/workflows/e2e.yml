@@ -91,7 +91,7 @@ jobs:
             --mods auto \
             --script-sh tests/e2e_vm_test.sh \
             --memory 512M \
-            -- loglevel=3
+            -a loglevel=3
 
   watchdog-unit:
     name: Go Watchdog Build & Test
