@@ -19,15 +19,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm libelf-dev linux-headers-generic libbpf-dev
-          # Dynamically install bpftool matching current kernel (Azure runner specific)
+          # On Azure runners the bpftool binary lives in linux-tools-<exact-kver>
+          # linux-tools-common only installs a wrapper that calls the versioned binary
           KVER=$(uname -r)
-          sudo apt-get install -y linux-cloud-tools-${KVER} linux-tools-${KVER} || \
+          sudo apt-get install -y "linux-tools-${KVER}" "linux-cloud-tools-${KVER}" 2>/dev/null || \
+            sudo apt-get install -y linux-tools-azure linux-cloud-tools-azure 2>/dev/null || \
             sudo apt-get install -y linux-tools-generic
+          # Locate the real bpftool binary (not the stub wrapper)
+          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool 2>/dev/null | head -1)
+          if [ -z "$BPFTOOL" ]; then
+            echo "ERROR: bpftool binary not found after install" && exit 1
+          fi
+          sudo ln -sf "$BPFTOOL" /usr/local/bin/bpftool
+          bpftool version
 
       - name: Generate vmlinux.h from BTF (CO-RE key step)
         run: |
-          # Verify bpftool is available
-          bpftool version
           bpftool btf dump file /sys/kernel/btf/vmlinux format c \
             > ebpf/vmlinux.h
 
@@ -42,7 +49,6 @@ jobs:
             -I/usr/include/x86_64-linux-gnu \
             -c ebpf/tproxy_tc.bpf.c \
             -o ebpf/tproxy_tc.bpf.o
-          # 验证 BTF section 确实存在
           llvm-objdump -h ebpf/tproxy_tc.bpf.o | grep -E "BTF|btf"
 
       - name: Upload as release artifact
@@ -93,8 +99,6 @@ jobs:
 
     - name: JSON template validation
       run: |
-        # 展开所有模板变量后验证 JSON 是否合法
-        # TUN_ADDRESS 在数组中使用，必须替换为带引号的值
         sed \
           -e 's|\${DNS_STRATEGY}|"strategy": "prefer_ipv4",|g' \
           -e 's|\${TUN_ADDRESS}|"172.18.0.1\/30"|g' \
@@ -127,7 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Load TUN kernel module before container launch
+      - name: Load TUN kernel module on host
         run: sudo modprobe tun
 
       - name: Run privileged container with TUN
