@@ -88,6 +88,7 @@ jobs:
           # Kernel cmdline parameters follow --
           virtme-run \
             --kimg "$KERNEL" \
+            --mods auto \
             --script-sh tests/e2e_vm_test.sh \
             --memory 512M \
             -- loglevel=3
