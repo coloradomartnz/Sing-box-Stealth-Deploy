@@ -19,10 +19,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm libelf-dev linux-headers-generic libbpf-dev
-          # Install bpftool matching current kernel: try exact version, then azure, then generic
+          # Dynamically install bpftool matching current kernel (Azure runner specific)
           KVER=$(uname -r)
-          sudo apt-get install -y linux-tools-${KVER} 2>/dev/null || \
-            sudo apt-get install -y linux-tools-azure 2>/dev/null || \
+          sudo apt-get install -y linux-cloud-tools-${KVER} linux-tools-${KVER} || \
             sudo apt-get install -y linux-tools-generic
 
       - name: Generate vmlinux.h from BTF (CO-RE key step)

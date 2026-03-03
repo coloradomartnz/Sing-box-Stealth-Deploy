@@ -50,7 +50,7 @@ jobs:
       - name: Install virtme-ng and QEMU
         run: |
           sudo apt-get update
-          # iproute2 必须安装，VM 内的 ip/tuntap 命令来自宿主 rootfs
+          # iproute2 is required as VM ip/tuntap commands come from host rootfs
           sudo apt-get install -y qemu-system-x86 linux-image-generic iproute2
           # Break system packages via PEP-668 bypass for virtme
           sudo pip3 install virtme-ng --break-system-packages
@@ -59,35 +59,29 @@ jobs:
         run: |
           mkdir -p tests
           cat > tests/e2e_vm_test.sh << 'VMEOF'
-#!/bin/bash
-set -euo pipefail
-# Validate TUN in VM
-ip tuntap add dev singbox_tun mode tun
-ip addr add 172.18.0.1/30 dev singbox_tun
-ip link set singbox_tun up
-# Validate Routing Tables & Marks
-ip route add default dev singbox_tun table 200
-ip rule add fwmark 0x162 table 200
-
-ip route show table 200 | grep singbox_tun || exit 1
-ip rule show | grep "0x162" || exit 1
-echo "VM E2E: ALL PASS"
-VMEOF
+          #!/bin/bash
+          set -euo pipefail
+          # Validate TUN in VM
+          ip tuntap add dev singbox_tun mode tun
+          ip addr add 172.18.0.1/30 dev singbox_tun
+          ip link set singbox_tun up
+          # Validate Routing Tables & Marks
+          ip route add default dev singbox_tun table 200
+          ip rule add fwmark 0x162 table 200
+          
+          ip route show table 200 | grep singbox_tun || exit 1
+          ip rule show | grep "0x162" || exit 1
+          echo "VM E2E: ALL PASS"
+          VMEOF
           chmod +x tests/e2e_vm_test.sh
 
       - name: Run in virtme VM
         run: |
-          # Use --kimg with sudo cp to make kernel readable, then run
-          KERNEL=$(ls /boot/vmlinuz-* | sort -V | tail -n1)
-          KVER=$(basename "$KERNEL" | sed 's/vmlinuz-//')
-          # Copy kernel to tmp so virtme-ng can read it without root
-          sudo cp "$KERNEL" /tmp/vmlinuz-ci
-          sudo chmod 644 /tmp/vmlinuz-ci
-          # Use absolute path for script-sh so virtme can locate it inside the VM
-          virtme-run \
-            --kimg /tmp/vmlinuz-ci \
+          # Use sudo to access protected kernel images on Azure runners
+          sudo virtme-run \
+            --installed-kernel \
             --mods auto \
-            --script-sh "$(pwd)/tests/e2e_vm_test.sh" \
+            --script-sh tests/e2e_vm_test.sh \
             --memory 512M \
             -a loglevel=3
 
