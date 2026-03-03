@@ -7,13 +7,13 @@ acquire_deploy_lock() {
 	local lock_file="$1"
 	local pid_file="$2"
 	local timeout="${3:-300}"
-	local lock_fd=201 # 使用不同的 FD 避免冲突
+	local lock_fd
 	
 	# 确保目录存在
 	mkdir -p "$(dirname "$lock_file")" 2>/dev/null || true
 
-	# 原子性打开文件
-	eval "exec ${lock_fd}>\"$lock_file\""
+	# 原子性打开文件 (移除 eval，使用安全语法)
+	exec {lock_fd}>"$lock_file"
 	
 	local start
 	start=$(date +%s)
@@ -53,13 +53,13 @@ cleanup_deploy_lock() {
 acquire_script_lock() {
   local lock_file="$1"
   local timeout="${2:-300}"
-  local lock_fd="${3:-200}"
+  local lock_fd
   
   # 确保目录存在
   mkdir -p "$(dirname "$lock_file")" 2>/dev/null || true
 
   # 原子性打开文件
-  eval "exec ${lock_fd}>\"$lock_file\""
+  exec {lock_fd}>"$lock_file"
   
   local start
   start=$(date +%s)
@@ -91,13 +91,12 @@ acquire_script_lock() {
   # 写入 PID
   echo $$ > "$pid_file" 2>/dev/null || true
   
-  # C-2 修复: 链式 trap 注册，保留调用方已注册的 EXIT/INT/TERM trap
-  local _prev_exit_trap
-  _prev_exit_trap=$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/" || echo "")
-  local _lock_cleanup="rm -f '$pid_file' 2>/dev/null; eval \"exec ${lock_fd}>&-\""
-  if [ -n "$_prev_exit_trap" ]; then
-    # shellcheck disable=SC2064
-    trap "${_lock_cleanup}; ${_prev_exit_trap}" EXIT INT TERM
+  # C-2 修复: 链式 trap 注册，保留调用方已注册的 EXIT/INT/TERM trap (安全获取 trap 方式)
+  local _old_trap
+  _old_trap=$(trap -p EXIT | sed -E 's/^trap -- (.*) EXIT$/\1/')
+  local _lock_cleanup="rm -f '$pid_file' 2>/dev/null; exec ${lock_fd}>&-"
+  if [ -n "$_old_trap" ]; then
+    eval "trap \"${_lock_cleanup}; eval \$_old_trap\" EXIT INT TERM"
   else
     # shellcheck disable=SC2064
     trap "${_lock_cleanup}" EXIT INT TERM

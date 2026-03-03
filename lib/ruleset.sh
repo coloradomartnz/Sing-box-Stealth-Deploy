@@ -29,7 +29,7 @@ download_ruleset() {
 	# 2) 下载
 	log_info "下载：$url"
 	if curl -fsSL --fail \
-		--retry 10 --retry-delay 2 --retry-all-errors \
+		--retry 10 --retry-delay 2 --retry-max-time 120 --retry-all-errors \
 		--connect-timeout 10 --max-time 60 \
 		-o "$tmp" "$url"; then
 		if [ -s "$tmp" ]; then

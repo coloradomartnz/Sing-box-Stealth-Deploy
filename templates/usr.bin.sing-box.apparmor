@@ -6,8 +6,8 @@
 
   capability net_admin,
   capability net_bind_service,
-  # systemd unit 已启用 CAP_NET_RAW，AppArmor 也需放行以避免 DENIED 噪声/潜在功能受限
-  capability net_raw,
+  # 安全团队审计意见: TUN 模式的 sing-box 实际不需要 net_raw 权限，剥离以缩小被利用风险
+  # capability net_raw,
   # 允许访问 TUN 设备节点（否则可能导致 tun 初始化失败）
   /dev/net/tun rw,
 
@@ -21,7 +21,9 @@
   /var/lib/sing-box/ r,
   /var/lib/sing-box/** rwk,
 
-  /proc/sys/net/** r,
+  # O-C2 安全加固: 细化 Proc 读权限范围
+  /proc/sys/net/ipv4/ip_forward r,
+  /proc/sys/net/ipv4/conf/*/rp_filter r,
   /proc/*/cgroup r,
   /proc/*/mountinfo r,
   /sys/devices/virtual/net/** r,

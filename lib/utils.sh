@@ -22,8 +22,8 @@ _redact() {
 	sed -E \
 		-e 's#https?://[^[:space:]]+#<REDACTED_URL>#g' \
 		-e 's/([0-9]{1,3}\.){3}[0-9]{1,3}/<REDACTED_IP>/g' \
-		-e 's/(token|key|secret|password)=[^&[:space:]]+/\1=<REDACTED>/gi' \
-		-e 's/"(token|key|secret|password)"[[:space:]]*:[[:space:]]*"[^"]*"/"\1":""/gi'
+		-e 's/(token|key|secret|password|uuid|private_key|pre_shared_key|auth_str|username|peer)=[^&[:space:]]+/\1=<REDACTED>/gi' \
+		-e 's/"(token|key|secret|password|uuid|private_key|pre_shared_key|auth_str|username|peer)"[[:space:]]*:[[:space:]]*"[^"]*"/"\1":""/gi'
 }
 
 _on_err() {
@@ -200,8 +200,20 @@ _atomic_write() {
 		content=$(cat)
 	fi
 	
+	local target_dir
+	target_dir="$(dirname "$target")"
+	
+	# 检查目标磁盘是否有充足可用空间 (预留至少 1MB)
+	if ! df -P "$target_dir" >/dev/null 2>&1 || [ "$(df -P "$target_dir" | awk 'NR==2 {print $4}')" -lt 1024 ]; then
+		log_error "目标路径 $target_dir 磁盘空间耗尽或无法访问，退出原子写入。"
+		return 1
+	fi
+
 	local tmp
-	tmp=$(mktemp "$(dirname "$target")/$(basename "$target").tmp.XXXXXX")
+	tmp=$(mktemp "$target_dir/$(basename "$target").tmp.XXXXXX") || {
+		log_error "在 $target_dir 创建临时文件失败，可能是权限或配置所致。"
+		return 1
+	}
 	
 	# C-3 修复: 继承目标文件的权限（如果存在）
 	if [ -f "$target" ]; then
@@ -270,6 +282,7 @@ create_rollback_point() {
 
 	if [ ${#files_to_back[@]} -gt 0 ]; then
 		tar -czf "$rollback_tar" -C "$config_dir" "${files_to_back[@]}"
+		sha256sum "$rollback_tar" > "${rollback_tar}.sha256"
 		log_info "  ✓ 已保存回滚快照: $rollback_tar (${files_to_back[*]})"
 	else
 		log_warn "  ⚠ 未找到任何配置文件，跳过回滚点创建"

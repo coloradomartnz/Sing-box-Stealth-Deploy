@@ -36,6 +36,7 @@ do_uninstall() {
 		singbox-ruleset-weekly-update.service singbox-ruleset-weekly-update.timer
 		singbox-dns-failover.service singbox-dns-failover.timer
 		singbox-backup.service singbox-backup.timer
+		singbox-residential-watchdog.service
 	)
 	for unit in "${units[@]}"; do
 		if systemctl list-unit-files "$unit" &>/dev/null; then
@@ -53,6 +54,7 @@ do_uninstall() {
 	rm -f /etc/systemd/system/singbox-dns-failover.{service,timer}
 	rm -f /etc/systemd/system/singbox-ruleset-weekly-update.{service,timer}
 	rm -f /etc/systemd/system/singbox-backup.{service,timer}
+	rm -f /etc/systemd/system/singbox-residential-watchdog.service
 	systemctl daemon-reload
 	echo "  ✓ 已删除所有 systemd 单元"
 
@@ -63,6 +65,7 @@ do_uninstall() {
 	rm -f /usr/local/bin/singbox_ruleset_weekly_update.sh
 	rm -f /usr/local/bin/add_docker_route.sh
 	rm -f /usr/local/bin/singbox_build_region_groups.py
+	rm -f /usr/local/bin/singbox-residential-watchdog.sh
 	# O-C2 修复: 清理共享锁库目录
 	rm -rf /usr/local/lib/singbox
 	echo "  ✓ 已删除管理脚本"

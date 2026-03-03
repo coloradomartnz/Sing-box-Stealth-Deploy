@@ -24,6 +24,11 @@ deploy_step_06() {
 	fi
 
 	# 自动选择 Bootstrap DNS
+	# [风险注解]
+	# 此处初始使用明文 223.5.5.5 / 8.8.8.8 作为 Bootstrap（UDP/53），
+	# 仅用于在 sing-box 隧道建立前，临时解析 DoH 域名等基础设施节点。
+	# 在 strict_route: true 启用的前提下，流量接管会阻断常规应用的 DNS 泄漏，
+	# 且一旦 DoH 解析完成建立隧道，日常解析即受保护。此处短连属可控风险。
 	bootstrap_dns="223.5.5.5"
 	if ! timeout 2 ping -c1 -W1 223.5.5.5 >/dev/null 2>&1; then
 		bootstrap_dns="8.8.8.8"
@@ -103,16 +108,26 @@ deploy_step_06() {
 		    -e "s|\${DASHBOARD_SECRET}|${DASHBOARD_SECRET:-sing-box}|g" \
 		    -e "s|\${RECOMMENDED_TUN_MTU}|${RECOMMENDED_TUN_MTU:-1400}|g" \
 		    -e "s|\${LAN_SUBNET}|${LAN_SUBNET:-192.168.0.0/16}|g" \
+		    -e "s|\${RES_HOST}|${RES_HOST:-}|g" \
+		    -e "s|\${RES_PORT_INT}|${RES_PORT:-0}|g" \
+		    -e "s|\${RES_USER}|${RES_USER:-}|g" \
+		    -e "s|\${RES_PASS}|${RES_PASS:-}|g" \
 		    "$template_src_dir/config_template.json.tpl" > "$tmp_tpl"
 		
 		# 第二阶段: 依托 JQ 进行对象级无损注入
 		jq --argjson cr "$cr_arr" \
 		   --argjson cd "$cd_arr" \
 		   --argjson nd "$nd_json" \
+		   --arg has_res "${RES_HOST:+1}" \
 		   '
 		   .route.rules = (.route.rules[:2] + $cr + .route.rules[2:]) |
 		   .dns.rules = ($cd + .dns.rules) |
-		   (if $nd != null then .dns.servers = (.dns.servers[:3] + [$nd] + .dns.servers[3:]) else . end)
+		   (if $nd != null then .dns.servers = (.dns.servers[:3] + [$nd] + .dns.servers[3:]) else . end) |
+		   # Stealth+ 逻辑：如果未配置住宅代理，移除相关出站并修改 AI 组
+		   (if $has_res == "" then
+		     del(.outbounds[] | select(.tag == "🏠 住宅代理-中转出口")) |
+		     (.outbounds[] |= if .tag == "🤖 AI专用-精准分流" then .outbounds = ["🚀 节点选择", "direct"] | .default = "🚀 节点选择" else . end)
+		   else . end)
 		   ' "$tmp_tpl" | _atomic_write "$config_dir/config_template.json"
 		
 		rm -f "$tmp_tpl"

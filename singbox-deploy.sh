@@ -17,8 +17,30 @@ PROJECT_DIR="$(dirname "$(readlink -f "$0")")"
 # 1. 加载核心库
 source "$PROJECT_DIR/lib/globals.sh"
 source "$PROJECT_DIR/lib/utils.sh"
-source "$PROJECT_DIR/lib/checks.sh"
 source "$PROJECT_DIR/lib/lock.sh"
+
+_CLEANUP_DIRS=()
+_CLEANUP_PIDS=()
+_cleanup_all() {
+	cleanup_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID"
+	cleanup
+	for pid in "${_CLEANUP_PIDS[@]}"; do
+		kill -9 "$pid" 2>/dev/null || true
+	done
+	wait "${_CLEANUP_PIDS[@]}" 2>/dev/null || true
+	for dir in "${_CLEANUP_DIRS[@]}"; do
+		[ -d "$dir" ] && rm -rf "$dir" 2>/dev/null || true
+	done
+}
+register_cleanup_dir() {
+	_CLEANUP_DIRS+=("$1")
+}
+register_cleanup_pid() {
+	_CLEANUP_PIDS+=("$1")
+}
+trap '_cleanup_all' EXIT INT TERM
+
+source "$PROJECT_DIR/lib/checks.sh"
 source "$PROJECT_DIR/lib/ruleset.sh"
 
 # 2. 加载子命令 (按需加载可选，这里统一加载)
@@ -34,6 +56,7 @@ source "$PROJECT_DIR/steps/04-rulesets.sh"
 source "$PROJECT_DIR/steps/05-dashboard-ui.sh"
 source "$PROJECT_DIR/steps/06-templates-and-config.sh"
 source "$PROJECT_DIR/steps/07-finalize.sh"
+source "$PROJECT_DIR/steps/08-stealth-plus.sh"
 
 # ============================================================================
 # 参数解析
@@ -113,22 +136,6 @@ install_missing_tools || { log_error "必需工具安装失败"; exit 1; }
 
 # 2. 获取部署锁
 acquire_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID" 300 || exit 1
-
-# C-4 修复: 使用全局清理函数，避免 trap 硬覆盖导致子步骤的清理逻辑丢失
-# C-1 安全修复: 使用目录数组替代 eval 字符串，消除命令注入风险
-_CLEANUP_DIRS=()
-_cleanup_all() {
-	cleanup_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID"
-	cleanup
-	# 安全清理所有注册的临时目录
-	for dir in "${_CLEANUP_DIRS[@]}"; do
-		[ -d "$dir" ] && rm -rf "$dir" 2>/dev/null || true
-	done
-}
-register_cleanup_dir() {
-	_CLEANUP_DIRS+=("$1")
-}
-trap '_cleanup_all' EXIT INT TERM
 
 # 3. 信息收集 (仅在非升级模式)
 
@@ -253,14 +260,33 @@ NEXTDNS_ID="$NEXTDNS_ID"
 DASHBOARD_PORT="$DASHBOARD_PORT"
 DASHBOARD_SECRET="$DASHBOARD_SECRET"
 ENABLE_DASHBOARD="$ENABLE_DASHBOARD"
+ENABLE_DASHBOARD="$ENABLE_DASHBOARD"
 IS_DESKTOP="$IS_DESKTOP"
 EOF
+	
+	# Stealth+ 住宅 IP 信息收集 (可选)
+	if [ "$AUTO_YES" -eq 0 ]; then
+		read -r -p "是否记录住宅 IP 代理信息以供后续集成？[y/N]: " ENABLE_RES_INPUT
+		if [[ "$ENABLE_RES_INPUT" =~ ^[Yy]$ ]]; then
+			read -r -p "  住宅代理 Host: " RES_HOST
+			read -r -p "  住宅代理 Port: " RES_PORT
+			read -r -p "  Proxy 用户名: " RES_USER
+			read -rs -p "  Proxy 密码: " RES_PASS; echo
+			
+			{
+				echo "RES_HOST=\"$RES_HOST\""
+				echo "RES_PORT=\"$RES_PORT\""
+				echo "RES_USER=\"$RES_USER\""
+				echo "RES_PASS=\"$RES_PASS\""
+			} >> "$DEPLOYMENT_CONFIG"
+		fi
+	fi
 else
 	log_info "[升级模式] 加载现有配置..."
 	if [ -f "$DEPLOYMENT_CONFIG" ]; then
 		# H-4 安全加固: 验证配置文件格式，防止代码注入
 		# C-3 安全修复: 收紧正则，禁止反引号、$()、${}等 shell 扩展字符
-		if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=-]*"$|^[[:space:]]*$|^#' "$DEPLOYMENT_CONFIG"; then
+		if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=%+\[\]-]*"$|^[[:space:]]*$|^#' "$DEPLOYMENT_CONFIG"; then
 			log_error "部署配置文件格式异常（包含非法行），可能被篡改: $DEPLOYMENT_CONFIG"
 			log_error "仅允许 KEY=\"VALUE\" 格式。请检查并修复后重试"
 			exit 1
@@ -282,14 +308,15 @@ else
 	fi
 fi
 
-# 4. 执行部署步骤
-deploy_step_01
-deploy_step_02
-deploy_step_03
-deploy_step_04
-deploy_step_05
-deploy_step_06
-deploy_step_07
+# 4. 执行部署步骤 (在子 Shell 中运行，隔离作用域)
+( deploy_step_01 )
+( deploy_step_02 )
+( deploy_step_03 )
+( deploy_step_04 )
+( deploy_step_05 )
+( deploy_step_06 )
+( deploy_step_07 )
+( deploy_step_08 )
 
 # C-4 修复: 移除错误缩进
 log_info "🎉 部署完成！"
@@ -299,7 +326,11 @@ if [ "${ENABLE_DASHBOARD:-0}" -eq 1 ]; then
 	echo ""
 	log_info "========================================================"
 	log_info "💻 面板访问地址: http://127.0.0.1:${DASHBOARD_PORT:-9090}/ui/"
-	log_info "🔑 面板访问密钥: ${DASHBOARD_SECRET:-sing-box}"
+	local _masked_secret="****"
+	if [ -n "${DASHBOARD_SECRET:-}" ] && [ "${#DASHBOARD_SECRET}" -gt 4 ]; then
+		_masked_secret="${DASHBOARD_SECRET:0:4}****"
+	fi
+	log_info "🔑 面板访问密钥: ${_masked_secret}"
 	log_info "========================================================"
 	echo ""
 fi

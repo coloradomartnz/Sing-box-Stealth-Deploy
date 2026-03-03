@@ -45,3 +45,4 @@ METACUBEXD_URL="https://github.com/MetaCubeX/MetacubexD/releases/latest/download
 RULESET_GEOSITE_CN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs"
 RULESET_GEOSITE_GEOLOC_NONCN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-geolocation-!cn.srs"
 RULESET_GEOIP_CN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geoip/geoip-cn.srs"
+RULESET_GEOSITE_OPENAI_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-openai.srs"

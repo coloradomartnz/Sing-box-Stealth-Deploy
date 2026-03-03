@@ -19,14 +19,22 @@ deploy_step_04() {
 	download_ruleset "$RULESET_GEOSITE_CN_URL" "$ruleset_dir/geosite-cn.srs" \
 		> "$dl_log_dir/geosite-cn.log" 2>&1 &
 	pids+=($!); log_files+=("$dl_log_dir/geosite-cn.log")
+	register_cleanup_pid "${pids[-1]}"
 
 	download_ruleset "$RULESET_GEOSITE_GEOLOC_NONCN_URL" "$ruleset_dir/geosite-geolocation-!cn.srs" \
 		> "$dl_log_dir/geosite-noncn.log" 2>&1 &
 	pids+=($!); log_files+=("$dl_log_dir/geosite-noncn.log")
+	register_cleanup_pid "${pids[-1]}"
 
 	download_ruleset "$RULESET_GEOIP_CN_URL" "$ruleset_dir/geoip-cn.srs" \
 		> "$dl_log_dir/geoip-cn.log" 2>&1 &
 	pids+=($!); log_files+=("$dl_log_dir/geoip-cn.log")
+	register_cleanup_pid "${pids[-1]}"
+
+	download_ruleset "$RULESET_GEOSITE_OPENAI_URL" "$ruleset_dir/geosite-openai.srs" \
+		> "$dl_log_dir/geosite-openai.log" 2>&1 &
+	pids+=($!); log_files+=("$dl_log_dir/geosite-openai.log")
+	register_cleanup_pid "${pids[-1]}"
 
 	local download_fail=0
 	for i in "${!pids[@]}"; do
