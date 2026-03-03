@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
 cr_arr='[{"domain": ["abc.com"], "outbound": "direct"}, {"domain": ["xyz.com"], "outbound": "proxy"}]'
 cd_arr='[{"domain": ["abc.com"], "server": "local"}, {"domain": ["xyz.com"], "server": "remote_cf"}]'
 nd_json='{"tag": "remote_nextdns", "server": "dns.nextdns.io"}'

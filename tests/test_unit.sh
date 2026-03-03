@@ -72,7 +72,7 @@ echo ""
 echo "[1/7] _atomic_write 原子写入..."
 
 TMP_DIR=$(mktemp -d /tmp/singbox-unittest.XXXXXX)
-trap "rm -rf '$TMP_DIR'" EXIT
+trap 'rm -rf "$TMP_DIR"' EXIT
 
 # 基本写入
 _atomic_write "$TMP_DIR/basic.txt" "hello world"

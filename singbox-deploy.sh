@@ -229,7 +229,6 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 			read -r -p "  面板监听端口 [默认: 9090]: " DASHBOARD_PORT_INPUT
 			DASHBOARD_PORT=${DASHBOARD_PORT_INPUT:-9090}
 			# O-13: 交互模式下也默认生成随机 secret
-			local _DEFAULT_SECRET
 			_DEFAULT_SECRET=$(openssl rand -hex 8 2>/dev/null || echo "sing-box")
 			read -r -p "  面板访问秘钥 [默认: $_DEFAULT_SECRET]: " DASHBOARD_SECRET_INPUT
 			DASHBOARD_SECRET=${DASHBOARD_SECRET_INPUT:-$_DEFAULT_SECRET}

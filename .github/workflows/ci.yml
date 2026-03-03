@@ -48,10 +48,13 @@ jobs:
 
     - name: JSON template validation
       run: |
-        # 用 sed 展开模板变量后验证 JSON
-        sed -e 's|\${DNS_STRATEGY}|"strategy": "prefer_ipv4",|g' \
-            -e 's|\${[A-Z_]*}|test|g' \
-            templates/config_template.json.tpl | jq empty
+        # 展开所有模板变量后验证 JSON 是否合法
+        # TUN_ADDRESS 在数组中使用，必须替换为带引号的值
+        sed \
+          -e 's|\${DNS_STRATEGY}|"strategy": "prefer_ipv4",|g' \
+          -e 's|\${TUN_ADDRESS}|"172.18.0.1\/30"|g' \
+          -e 's|\${[A-Z0-9_]*}|1400|g' \
+          templates/config_template.json.tpl | jq empty
 
   unit-tests:
     name: Unit Tests
