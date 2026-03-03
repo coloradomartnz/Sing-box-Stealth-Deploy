@@ -13,6 +13,7 @@ deploy_step_01() {
 	else
 		# 1.1 必需工具检查与安装
 		install_missing_tools || exit 1
+		download_bpf_object
 
 		# 1.2 安装 sing-box
 		if command -v sing-box &>/dev/null; then
@@ -87,4 +88,53 @@ EOF
 	fi
 
 	echo ""
+}
+
+download_bpf_object() {
+	local bpf_dest="/usr/local/share/sing-box/tproxy_tc.bpf.o"
+	local kernel_ver
+	kernel_ver=$(uname -r | cut -d. -f1-2 | tr -d '.')
+
+	# 内核版本门槛：CO-RE 需要 BTF 支持 (>= 5.4 有 BTF，>= 5.10 TC redirect 稳定)
+	if [ "$kernel_ver" -lt 510 ]; then
+		log_warn "内核 $(uname -r) < 5.10，跳过 eBPF TC 模式，保留 ip rule fwmark 回退"
+		echo "EBPF_TC_MODE=0" >> "$DEPLOYMENT_CONFIG"
+		return 0
+	fi
+
+	# 检查是否已有可用 BTF (/sys/kernel/btf/vmlinux)
+	if [ ! -f /sys/kernel/btf/vmlinux ]; then
+		log_warn "内核缺少 BTF（CONFIG_DEBUG_INFO_BTF 未开启），回退"
+		echo "EBPF_TC_MODE=0" >> "$DEPLOYMENT_CONFIG"
+		return 0
+	fi
+
+	mkdir -p "$(dirname "$bpf_dest")"
+
+	# 从 GitHub Release 下载预编译对象，零编译依赖
+	local release_url
+	release_url=$(curl -sf "https://api.github.com/repos/coloradomartnz/Sing-box-Stealth-Deploy/releases/latest" | jq -r '.assets[] | select(.name == "tproxy_tc.bpf.o") | .browser_download_url')
+
+	if [ -z "$release_url" ]; then
+		log_warn "无法获取 BPF release 资产，回退到 ip rule 模式"
+		echo "EBPF_TC_MODE=0" >> "$DEPLOYMENT_CONFIG"
+		return 0
+	fi
+
+	_run curl -fsSL -o "$bpf_dest" "$release_url"
+
+	# 验证 ELF magic + BTF section（无需 clang，只需 file 命令）
+	if ! file "$bpf_dest" | grep -q "ELF.*BPF"; then
+		log_error "下载的 .bpf.o 格式无效"
+		rm -f "$bpf_dest"
+		echo "EBPF_TC_MODE=0" >> "$DEPLOYMENT_CONFIG"
+		return 1
+	fi
+
+	log_info "✓ BPF CO-RE 对象已就绪: $bpf_dest"
+	echo "EBPF_TC_MODE=1" >> "$DEPLOYMENT_CONFIG"
+
+	# 目标机器只需 libbpf0（运行时）+ bpftool（map 操作），不需要 clang/llvm
+	apt-get install -y --no-install-recommends libbpf0 bpftool 2>/dev/null || \
+		log_warn "libbpf0 安装失败，TC redirect 可能降级"
 }

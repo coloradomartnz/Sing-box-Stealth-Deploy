@@ -7,6 +7,49 @@ on:
     branches: [ "main", "master" ]
 
 jobs:
+  build-bpf:
+    name: Build BPF CO-RE Object
+    runs-on: ubuntu-24.04
+    outputs:
+      bpf_artifact: tproxy_tc.bpf.o
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install BPF toolchain (Clang + libbpf headers only)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libelf-dev linux-headers-generic
+          # 安装最新 libbpf-dev (含 BTF vmlinux.h 生成工具)
+          sudo apt-get install -y libbpf-dev
+
+      - name: Generate vmlinux.h from BTF (CO-RE 关键步骤)
+        run: |
+          # bpftool btf dump file /sys/kernel/btf/vmlinux format c > ebpf/vmlinux.h
+          # CI 机器上 vmlinux BTF 一定存在
+          bpftool btf dump file /sys/kernel/btf/vmlinux format c \
+            > ebpf/vmlinux.h
+
+      - name: Compile BPF object with BTF debug info embedded
+        run: |
+          clang \
+            -O2 \
+            -g \
+            -target bpf \
+            -D__TARGET_ARCH_x86 \
+            -I./ebpf \
+            -I/usr/include/x86_64-linux-gnu \
+            -c ebpf/tproxy_tc.bpf.c \
+            -o ebpf/tproxy_tc.bpf.o
+          # 验证 BTF section 确实存在
+          llvm-objdump -h ebpf/tproxy_tc.bpf.o | grep -E "BTF|btf"
+
+      - name: Upload as release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bpf-objects
+          path: ebpf/tproxy_tc.bpf.o
+          retention-days: 90
+
   shellcheck:
     name: ShellCheck Lint
     runs-on: ubuntu-latest
@@ -76,26 +119,17 @@ jobs:
 
   docker-smoke:
     name: Docker Smoke Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [shellcheck, syntax-check]
-    continue-on-error: true    # Docker build is supplementary; unit/integration tests already run directly
     timeout-minutes: 15
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Docker and Kernel Modules
-      run: |
-        docker info || (echo "Docker not available, skipping" && exit 0)
-        # 预先检查并尝试加载 TUN 模块 (探测 Docker-in-Docker 下容器能否获得内核模块)
-        sudo modprobe tun || echo "Warning: TUN module unavailable or misconfigured in this Ubuntu CI kernel, smoke test might degrade"
-
-    - name: Build test container
-      env:
-        DOCKER_BUILDKIT: 0
-      run: |
-        docker build -f Dockerfile.test -t singbox-test . \
-          --progress=plain \
-          --no-cache=false
-
-    - name: Run tests in container
-      run: docker run --rm singbox-test
+      - name: Run privileged container with TUN
+        run: |
+          docker run --rm --privileged \
+            --cap-add NET_ADMIN \
+            --device /dev/net/tun \
+            -v "$(pwd)":/workspace \
+            ubuntu:24.04 \
+            bash /workspace/tests/docker_tun_smoke.sh

@@ -32,7 +32,7 @@ EOF
 	log_info "部署 systemd 单元文件..."
 	local systemd_units=(
 		"sing-box.service"
-		"singbox-healthcheck.service" "singbox-healthcheck.timer"
+		"singbox-watchdog.service"
 		"singbox-dns-failover.service" "singbox-dns-failover.timer"
 		"singbox-ruleset-weekly-update.service" "singbox-ruleset-weekly-update.timer"
 		"singbox-backup.service" "singbox-backup.timer"
@@ -54,7 +54,7 @@ EOF
 	fi
 
 	_run systemctl daemon-reload
-	_run systemctl enable sing-box singbox-healthcheck.timer singbox-ruleset-weekly-update.timer singbox-dns-failover.timer singbox-backup.timer
+	_run systemctl enable sing-box singbox-watchdog.service singbox-ruleset-weekly-update.timer singbox-dns-failover.timer singbox-backup.timer
 
 	# 5.4 AppArmor 安全策略
 	if command -v apparmor_parser &>/dev/null && [ -f "$template_src_dir/usr.bin.sing-box.apparmor" ]; then

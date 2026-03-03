@@ -41,4 +41,28 @@
   network inet6 dgram,
   # O-C1: sing-box 需要 netlink 管理路由表
   network netlink raw,
+
+  # ── 安全加固 Rev.2（审查纠正版）──────────────────────────────────────────
+  # 1. 保留 inet/inet6 stream+dgram（出站到机场节点的真实连接，绝不能裁）
+  #    sing-box 需要 TCP 握手连接 vless/vmess/trojan 海外服务器
+  #
+  # 2. 保留 netlink raw（管理 TUN/路由表所需，如 RTNETLINK 消息）
+  #
+  # 3. 新增：拒绝 raw socket（防止 AF_INET SOCK_RAW 内核提权或 LAN 扫描欺骗）
+  #    注：与现有 `# capability net_raw` 被注释形成防御纵深
+  deny network raw,
+
+  # 4. 新增：拒绝 packet socket（AF_PACKET = 直接访问数据链路层）
+  #    防止攻击者通过代理进程构造 ARP spoofing / L2 帧注入
+  deny network packet,
+
+  # 5. cgroup v2 路径访问（支持 eBPF TC cgroup 分流读取自身 cgroup 路径）
+  /sys/fs/cgroup/unified/**                          r,
+  /sys/fs/cgroup/system.slice/sing-box.service/**   rw,
+
+  # 6. 允许读取 BPF 对象文件（TC hook 挂载时需要 open）
+  /usr/local/share/sing-box/*.bpf.o                 r,
+
+  # 7. bpftool / BPF 文件系统（eBPF Map pin 路径）
+  /sys/fs/bpf/**                                    rw,
 }

@@ -1,0 +1,18 @@
+[Unit]
+Description=sing-box Watchdog 2.0 (Go sidecar)
+After=sing-box.service
+BindsTo=sing-box.service
+ConditionPathExists=/usr/local/etc/sing-box/.deployment_config
+
+[Service]
+Type=simple
+EnvironmentFile=/usr/local/etc/sing-box/.deployment_config
+ExecStart=/usr/local/bin/singbox-watchdog
+Restart=always
+RestartSec=5
+KillMode=process
+# Jitter handles poll cycles, wait max bounds internally.
+WatchdogSec=120
+
+[Install]
+WantedBy=multi-user.target

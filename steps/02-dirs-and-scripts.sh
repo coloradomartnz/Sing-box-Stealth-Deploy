@@ -23,7 +23,6 @@ deploy_step_02() {
 	project_root="$(dirname "$(readlink -f "$0")")"
 	
 	local target_scripts=(
-		"scripts/singbox_health_check.sh:/usr/local/bin/singbox_health_check.sh"
 		"scripts/singbox_dns_failover.sh:/usr/local/bin/singbox_dns_failover.sh"
 		"scripts/singbox_ruleset_weekly_update.sh.tpl:/usr/local/bin/singbox_ruleset_weekly_update.sh"
 		"scripts/add_docker_route.sh:/usr/local/bin/add_docker_route.sh"
@@ -58,6 +57,15 @@ deploy_step_02() {
 			log_warn "  ⚠ 源码缺失: $src (路径: $project_root/$src)"
 		fi
 	done
+
+	# 2.2.5 Build and deploy Go Watchdog sidecar
+	log_info "编译并部署 singbox-watchdog (Go Sidecar)..."
+	if command -v go &>/dev/null && [ -d "$project_root/cmd/watchdog" ]; then
+		_run bash -c "cd $project_root/cmd/watchdog && go build -o /usr/local/bin/singbox-watchdog ."
+		log_info "  ✓ 已编译并部署 Go Watchdog"
+	else
+		log_warn "  ⚠ 未获取到 Go 环境或 cmd/watchdog 目录，跳过 Watchdog 构建 (如果在 CI 中已预构建则忽略此警告)"
+	fi
 
 	# 2.3 初始化自定义分流规则列表
 	log_info "初始化自定义分流列表..."

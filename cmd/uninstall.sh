@@ -32,7 +32,7 @@ do_uninstall() {
 	echo "[1/10] 停止并禁用 systemd 单元..."
 	local units=(
 		sing-box.service
-		singbox-healthcheck.service singbox-healthcheck.timer
+		singbox-watchdog.service
 		singbox-ruleset-weekly-update.service singbox-ruleset-weekly-update.timer
 		singbox-dns-failover.service singbox-dns-failover.timer
 		singbox-backup.service singbox-backup.timer
@@ -50,7 +50,7 @@ do_uninstall() {
 	echo "[2/10] 删除 systemd 单元文件..."
 	rm -f /etc/systemd/system/sing-box.service
 	rm -rf /etc/systemd/system/sing-box.service.d
-	rm -f /etc/systemd/system/singbox-healthcheck.{service,timer}
+	rm -f /etc/systemd/system/singbox-watchdog.service
 	rm -f /etc/systemd/system/singbox-dns-failover.{service,timer}
 	rm -f /etc/systemd/system/singbox-ruleset-weekly-update.{service,timer}
 	rm -f /etc/systemd/system/singbox-backup.{service,timer}
@@ -60,7 +60,7 @@ do_uninstall() {
 
 	# [3/10] 删除管理脚本
 	echo "[3/10] 删除管理脚本..."
-	rm -f /usr/local/bin/singbox_health_check.sh
+	rm -f /usr/local/bin/singbox-watchdog
 	rm -f /usr/local/bin/singbox_dns_failover.sh
 	rm -f /usr/local/bin/singbox_ruleset_weekly_update.sh
 	rm -f /usr/local/bin/add_docker_route.sh
@@ -108,8 +108,7 @@ do_uninstall() {
 	rm -f /run/lock/sing-box-update.lock /run/lock/sing-box-update.lock.pid
 	# O-5 修复: 清理遗漏的主部署锁
 	rm -f /run/lock/singbox-deploy.lock /run/lock/singbox-deploy.lock.pid
-	# O-C2 修复: 清理健康检查和备份锁
-	rm -f /run/lock/singbox-healthcheck.lock /run/lock/singbox-healthcheck.lock.pid
+	# O-C2 修复: 清理备份锁
 	rm -f /run/lock/singbox-backup.lock
 	# O-C2 修复: 清理 DNS 切换备份文件
 	rm -f /usr/local/etc/sing-box/config.json.pre-dns-switch.* 2>/dev/null || true

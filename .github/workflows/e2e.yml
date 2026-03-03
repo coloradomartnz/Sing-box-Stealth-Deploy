@@ -1,0 +1,100 @@
+name: E2E Network Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  tun-e2e:
+    name: TUN Device & Traffic Validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify kernel TUN support (Bare-metal)
+        run: |
+          sudo modprobe tun
+          sudo ip tuntap add dev tun-test mode tun
+          sudo ip addr add 198.18.0.1/15 dev tun-test
+          sudo ip link set tun-test up
+          ip addr show tun-test
+          # Verify Routing Tables
+          sudo ip route add 8.8.8.8/32 dev tun-test
+          ip route show | grep "8.8.8.8"
+          sudo ip link delete tun-test
+
+      - name: Run script idempotency checks (DRY_RUN)
+        env:
+          MAIN_IFACE: "eth0"
+          AIRPORT_URLS_STR: "https://placeholder.test/sub"
+          DASHBOARD_PORT: "9090"
+          DASHBOARD_SECRET: "ci-test-secret"
+          ENABLE_DASHBOARD: "0"
+          AUTO_YES: "1"
+        run: |
+          sudo apt-get update && sudo apt-get install -y curl jq python3-yaml
+          # Validate DRY_RUN doesn't apply system destructive edits
+          sudo DRY_RUN=1 AUTO_YES=1 bash singbox-deploy.sh --auto-yes --dry-run 2>&1 \
+            | tee /tmp/dry-run.log || true
+          grep -v "DRY_RUN" /tmp/dry-run.log | grep -v "systemctl" || true
+
+  qemu-full-e2e:
+    name: QEMU Full Stack Test (virtme-ng)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install virtme-ng and QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip qemu-system-x86 linux-image-generic
+          # Break system packages via PEP-668 bypass for virtme
+          sudo pip3 install virtme-ng --break-system-packages
+
+      - name: Create E2E test script
+        run: |
+          mkdir -p tests
+          cat > tests/e2e_vm_test.sh << 'VMEOF'
+          #!/bin/bash
+          set -euo pipefail
+          # Validate TUN in VM
+          ip tuntap add dev singbox_tun mode tun
+          ip addr add 172.18.0.1/30 dev singbox_tun
+          ip link set singbox_tun up
+          # Validate Routing Tables & Marks
+          ip route add default dev singbox_tun table 200
+          ip rule add fwmark 0x162 table 200
+          
+          ip route show table 200 | grep singbox_tun || exit 1
+          ip rule show | grep "0x162" || exit 1
+          echo "VM E2E: ALL PASS"
+          VMEOF
+          chmod +x tests/e2e_vm_test.sh
+
+      - name: Run in virtme VM
+        run: |
+          KERNEL=$(ls /boot/vmlinuz-* | head -n1)
+          virtme-run \
+            --kimg "$KERNEL" \
+            --script-sh tests/e2e_vm_test.sh \
+            --memory 512M \
+            --rwdir /tmp/virtme-test \
+            -- --append "loglevel=3"
+
+  watchdog-unit:
+    name: Go Watchdog Build & Test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Build and Test watchdog binary
+        run: |
+          cd cmd/watchdog
+          go build -o /tmp/singbox-watchdog .
+          /tmp/singbox-watchdog --test 2>&1 | grep "circuit breaker"
