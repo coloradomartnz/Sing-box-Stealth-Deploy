@@ -6,6 +6,7 @@
 deploy_step_07() {
 	log_step "========== [7/7] 系统集成与启动验证 =========="
 
+	# shellcheck disable=SC2034
 	local config_dir="/usr/local/etc/sing-box"
 	local template_src_dir
 	template_src_dir="$(dirname "$(readlink -f "$0")")/templates"

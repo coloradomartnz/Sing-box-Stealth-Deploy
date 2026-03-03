@@ -16,8 +16,11 @@ if [ -d "$PROJECT_DIR/lib" ]; then
     source "$PROJECT_DIR/lib/lock.sh"
 else
     # 生产环境路径
+    # shellcheck source=/dev/null
     source "/usr/local/etc/sing-box/lib/globals.sh" 2>/dev/null || true
+    # shellcheck source=/dev/null
     source "/usr/local/etc/sing-box/lib/utils.sh" 2>/dev/null || true
+    # shellcheck source=/dev/null
     source "/usr/local/etc/sing-box/lib/lock.sh" 2>/dev/null || true
 fi
 

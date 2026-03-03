@@ -4,9 +4,12 @@ set -euo pipefail
 # O-1 修复: 使用共享锁库替代内联 acquire_lock
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 SHARED_LOCK="${SCRIPT_DIR}/lib/lock.sh"
+# shellcheck source=/dev/null
 if [ -f "$SHARED_LOCK" ]; then
+  # shellcheck source=/dev/null
   source "$SHARED_LOCK"
 elif [ -f "/usr/local/etc/sing-box/lib/lock.sh" ]; then
+  # shellcheck source=/dev/null
   source "/usr/local/etc/sing-box/lib/lock.sh"
 fi
 

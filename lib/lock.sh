@@ -15,9 +15,10 @@ acquire_deploy_lock() {
 	# 原子性打开文件
 	eval "exec ${lock_fd}>\"$lock_file\""
 	
-	local start=$(date +%s)
+	local start
+	start=$(date +%s)
 	
-	while ! flock -n $lock_fd; do
+	while ! flock -n "$lock_fd"; do
 		local elapsed=$(($(date +%s) - start))
 		
 		if [ -f "$pid_file" ]; then
@@ -29,7 +30,7 @@ acquire_deploy_lock() {
 			fi
 		fi
 		
-		if [ $elapsed -ge $timeout ]; then
+		if [ "$elapsed" -ge "$timeout" ]; then
 			log_error "获取安装锁超时 (${timeout}s)"
 			[ -f "$pid_file" ] && log_info "当前锁定进程: $(cat "$pid_file" 2>/dev/null)"
 			return 1
@@ -64,7 +65,7 @@ acquire_script_lock() {
   start=$(date +%s)
   local pid_file="${lock_file}.pid"
   
-  while ! flock -n $lock_fd; do
+  while ! flock -n "$lock_fd"; do
     local elapsed=$(($(date +%s) - start))
     
     # 检查是否为僵尸锁
@@ -95,8 +96,10 @@ acquire_script_lock() {
   _prev_exit_trap=$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/" || echo "")
   local _lock_cleanup="rm -f '$pid_file' 2>/dev/null; eval \"exec ${lock_fd}>&-\""
   if [ -n "$_prev_exit_trap" ]; then
+    # shellcheck disable=SC2064
     trap "${_lock_cleanup}; ${_prev_exit_trap}" EXIT INT TERM
   else
+    # shellcheck disable=SC2064
     trap "${_lock_cleanup}" EXIT INT TERM
   fi
   

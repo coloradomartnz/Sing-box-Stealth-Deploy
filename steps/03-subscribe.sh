@@ -9,7 +9,9 @@ deploy_step_03() {
 	if [ "${UPGRADE_MODE:-0}" -eq 1 ]; then
 		log_info "[升级模式] 已存在订阅转换工具，检查更新..."
 		if [ -d "$SB_SUB" ]; then
-			(cd "$SB_SUB" && git pull 2>/dev/null || true)
+			if cd "$SB_SUB"; then
+				git pull 2>/dev/null || true
+			fi
 		fi
 	else
 		log_info "从 GitHub 克隆 sing-box-subscribe..."
@@ -28,6 +30,7 @@ deploy_step_03() {
 
 	# 保存 commit 记录用于文档
 	if [ -d "$SB_SUB" ]; then
+		# shellcheck disable=SC2034
 		SUBSCRIBE_COMMIT=$(cd "$SB_SUB" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 		
 		# [优化] 自动修复第三方工具中误导性的提示语 (Hot Patch)

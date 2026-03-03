@@ -4,9 +4,12 @@ set -euo pipefail
 # O-6 修复 + O-1: 使用共享锁库替代死代码 acquire_lock 函数
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 SHARED_LOCK="${SCRIPT_DIR}/lib/lock.sh"
+# shellcheck source=/dev/null
 if [ -f "$SHARED_LOCK" ]; then
+  # shellcheck source=/dev/null
   source "$SHARED_LOCK"
 elif [ -f "/usr/local/etc/sing-box/lib/lock.sh" ]; then
+  # shellcheck source=/dev/null
   source "/usr/local/etc/sing-box/lib/lock.sh"
 fi
 
@@ -18,6 +21,7 @@ fi
 export FAILED_TITLE="sing-box 健康检查失败"
 export FAILED_BODY="代理服务异常，请检查"
 
+# shellcheck disable=SC2016
 exec timeout 45s bash -c '
 
 FAILED=0

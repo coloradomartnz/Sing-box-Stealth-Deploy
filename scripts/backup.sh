@@ -67,6 +67,7 @@ cleanup_backups() {
     # 列出该类型的所有备份，按时间倒序
     # 注意：文件名格式为 prefix.timestamp
     # 使用 grep 确保只匹配该前缀的文件
+    # shellcheck disable=SC2012
     (cd "$dir" && ls -1t "${prefix}"* 2>/dev/null | tail -n +$((keep + 1)) | xargs -r rm -f) || true
   done
 }

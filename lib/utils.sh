@@ -38,8 +38,9 @@ _on_err() {
 
 	# 如果 sing-box 已经装了/有 unit，顺手吐一点日志帮助定位
 	if command -v systemctl >/dev/null 2>&1; then
-		systemctl status sing-box --no-pager -n 30 >/dev/null 2>&1 &&
+		if systemctl status sing-box --no-pager -n 30 >/dev/null 2>&1; then
 			journalctl -u sing-box -n 120 --no-pager 2>/dev/null || true
+		fi
 	fi
 
 	exit "$rc"
@@ -191,7 +192,7 @@ _run() {
 				rm -f "$tmp"
 				elapsed=$(($(date +%s) - start_ts))
 
-				if [ $elapsed -ge $wait_s ]; then
+				if [ "$elapsed" -ge "$wait_s" ]; then
 					log_error "apt-get 被 dpkg 锁占用超过 ${wait_s}s，请稍后重试"
 					return $rc
 				fi
@@ -267,6 +268,7 @@ validate_sing_box_config() {
 
 	local check_log
 	check_log=$(mktemp /tmp/singbox_check.XXXXXX)
+	# shellcheck disable=SC2024
 	if ! sudo -u sing-box "$sb_bin" check -c "$config" >"$check_log" 2>&1; then
 		log_error "sing-box 语义检查失败:"
 		cat "$check_log" >&2
@@ -281,7 +283,6 @@ validate_sing_box_config() {
 create_rollback_point() {
 	local config_dir="${1:-/usr/local/etc/sing-box}"
 	local rollback_tar="$config_dir/rollback_point.tar.gz"
-	local config_json="$config_dir/config.json"
 	
 	log_info "创建配置回滚点..."
 	# 收集存在的配置文件

@@ -1,6 +1,9 @@
 # 🚀 Sing-box Stealth Deploy
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Bash](https://img.shields.io/badge/Language-Bash-4EAA25.svg?logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![Systemd](https://img.shields.io/badge/Integration-Systemd-black.svg?logo=linux&logoColor=white)](https://systemd.io/)
 
-**Sing-box Stealth Deploy** 是一个高度优化、模块化且极其健壮的 sing-box 透明代理一键部署脚本。专为追求极致性能与稳定性的 Linux 用户设计。
+**Sing-box Stealth Deploy** 是一款高度优化、模块化构架且极其稳定的 [sing-box](https://sing-box.sagernet.org/) 透明代理自动部署解决方案。本专案生而为追求**极致性能**、**系统洁癖**与**安全隔离**的 Linux 高级用户量身定制。只需一行代码，即可接管全局网络，让流媒体解锁和分流变得前所未有的简单。
 
 ---
 

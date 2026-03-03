@@ -48,7 +48,7 @@ do_rollback() {
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo "[选项 1] 快速回滚点（订阅更新前快照）"
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-		echo "  创建时间: $(date -d @${rp_timestamp} '+%Y-%m-%d %H:%M:%S')"
+		echo "  创建时间: $(date -d @"${rp_timestamp}" '+%Y-%m-%d %H:%M:%S')"
 		echo "  距今: ${rp_age_min} 分钟前"
 
 		if [ $rp_age_min -gt 10080 ]; then # 7 天
@@ -148,9 +148,12 @@ do_rollback() {
 	for i in "${!all_backups[@]}"; do
 		local file="${all_backups[$i]}"
 		local type="${backup_types[$i]}"
-		local timestamp=$(stat -c '%Y' "$file" 2>/dev/null)
-		local size=$(stat -c '%s' "$file" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "?")
-		local datetime=$(date -d @${timestamp} '+%Y-%m-%d %H:%M' 2>/dev/null || echo "未知")
+		local timestamp
+		timestamp=$(stat -c '%Y' "$file" 2>/dev/null)
+		local size
+		size=$(stat -c '%s' "$file" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "?")
+		local datetime
+		datetime=$(date -d @"${timestamp}" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "未知")
 		printf "[%2d] %-8s %-16s (%s)\n" "$((i + 1))" "$type" "$datetime" "$size"
 	done
 

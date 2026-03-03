@@ -28,6 +28,7 @@ fi
 
 echo "[*] 正在检测 Docker 网络..."
 # 同时检测 IPv4 和 IPv6 网段
+# shellcheck disable=SC2046
 DOCKER_SUBNETS=$(docker network inspect $(docker network ls -q) 2>/dev/null | \
   jq -r '.[].IPAM.Config[]? | select(.Subnet != null and .Subnet != "") | .Subnet' | \
   grep -E '^([0-9.]+(/[0-9]+)?|[0-9a-fA-F:]+(/[0-9]+)?)$' | sort -u)
@@ -38,6 +39,7 @@ if [ -z "$DOCKER_SUBNETS" ]; then
 fi
 
 echo "[+] 检测到以下 Docker 网段："
+# shellcheck disable=SC2001
 echo "$DOCKER_SUBNETS" | sed 's/^/    /'
 
 SUBNET_JSON=$(echo "$DOCKER_SUBNETS" | jq -R . | jq -s .)

@@ -74,7 +74,12 @@ do_status() {
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--check) do_check; exit 0 ;;
-	--uninstall) do_uninstall; exit 0 ;;
+	--uninstall)
+		# shellcheck disable=SC2317
+		do_uninstall
+		# shellcheck disable=SC2317
+		exit 0
+		;;
 	--rollback) do_rollback; exit 0 ;;
 	--version) echo "sing-box-stealth-deploy v${SCRIPT_VERSION}"; exit 0 ;;
 	--status) do_status; exit 0 ;;
@@ -188,6 +193,7 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 	# MTU/LAN 自动检测
 	PHYSICAL_MTU=$(ip -o link show dev "$MAIN_IFACE" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="mtu"){print $(i+1); exit}}' | head -n1)
 	PHYSICAL_MTU=${PHYSICAL_MTU:-1500}
+	# shellcheck disable=SC2034
 	NETWORK_TYPE=$(detect_interface_type "$MAIN_IFACE")
 	PROBED_MTU=$(probe_pmtu "8.8.8.8" "$PHYSICAL_MTU")
 	RECOMMENDED_TUN_MTU=$((PROBED_MTU - 80))
@@ -253,6 +259,7 @@ else
 			log_error "仅允许 KEY=\"VALUE\" 格式。请检查并修复后重试"
 			exit 1
 		fi
+		# shellcheck source=/dev/null
 		source "$DEPLOYMENT_CONFIG"
 		# O-D1 修复: 集中管理所有参数的向下兼容默认值
 		_ensure_compat_defaults() {

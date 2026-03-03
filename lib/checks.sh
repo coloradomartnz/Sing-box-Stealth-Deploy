@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 #
 # sing-box deployment project - environmental checks and validation
 #
@@ -10,6 +11,7 @@ detect_os() {
 	shopt -s nocasematch 2>/dev/null || true
 
 	_detect_os_cleanup() {
+		# shellcheck disable=SC2015
 		[ "$_nocasematch_was_off" -eq 1 ] && shopt -u nocasematch 2>/dev/null || true
 	}
 
@@ -25,8 +27,11 @@ detect_os() {
 	# Fallback: 解析 /etc/os-release
 	# O-A1 修复: 在子 shell 中 source 避免全局命名空间污染
 	if [ -f /etc/os-release ]; then
+		# shellcheck disable=SC1091
 		OS_ID=$(. /etc/os-release && echo "${ID^}")
+		# shellcheck disable=SC1091
 		OS_VERSION=$(. /etc/os-release && echo "${VERSION_ID:-unknown}")
+		# shellcheck disable=SC1091
 		OS_CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-unknown}")
 
 		# 标准化 ID
@@ -142,7 +147,7 @@ probe_pmtu() {
 	local high=$max_mtu
 	local result=$low
 
-	while [ $low -le $high ]; do
+	while [ "$low" -le "$high" ]; do
 		local mid=$(((low + high) / 2))
 		local payload=$((mid - 28)) # 减去 IP(20) + ICMP(8) 头
 
@@ -184,7 +189,7 @@ detect_lan_subnet() {
 		# O-2 修复: 位运算正确计算任意掩码长度的网络地址
 		local -a octets
 		IFS='.' read -ra octets <<< "$ip"
-		local ip_int=$(( (${octets[0]}<<24) + (${octets[1]}<<16) + (${octets[2]}<<8) + ${octets[3]} ))
+		local ip_int=$(( (octets[0]<<24) + (octets[1]<<16) + (octets[2]<<8) + octets[3] ))
 		local mask_int=$(( 0xFFFFFFFF << (32-mask) & 0xFFFFFFFF ))
 		local net_int=$(( ip_int & mask_int ))
 		printf "%d.%d.%d.%d/%d" \
