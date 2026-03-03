@@ -119,10 +119,13 @@ cidr_to_lpm_key() {
     local cidr="$1"
     local ip="${cidr%/*}"
     local prefix="${cidr#*/}"
-    # LPM_TRIE key 格式：prefixlen(4B LE) + addr(4B BE)
+    local o1 o2 o3 o4
+    # Split IP into 4 octets to avoid word splitting
+    IFS=. read -r o1 o2 o3 o4 <<< "$ip"
+    # 4-byte prefixlen(LE) + 4-byte IP(BE) = 8 parameters total
     printf '%d %d %d %d %d %d %d %d' \
-        $((prefix & 0xff)) $(( (prefix>>8) & 0xff)) 0 0 \
-        $(echo "$ip" | awk -F. '{print $1,$2,$3,$4}')
+        $((prefix & 0xff)) $(( (prefix >> 8) & 0xff)) 0 0 \
+        "$o1" "$o2" "$o3" "$o4"
 }
 
 # ── 降级路径（内核不支持时保留）────────────────────────────────────────────
@@ -177,7 +180,7 @@ setup_ebpf_tc_redirect() {
     bpftool map update \
         name tun_ifindex_map \
         key 0 0 0 0 \
-        value $(printf '%d 0 0 0' "$tun_ifindex") 2>/dev/null || \
+        value "$(printf '%d 0 0 0' "$tun_ifindex")" 2>/dev/null || \
         echo "[WARNING] bpftool map 写入失败，ifindex 将触发 pass-through 回退"
 
     # ── 4. 填充旁路 CIDR Map（Docker 内部不劫持）────────────────────

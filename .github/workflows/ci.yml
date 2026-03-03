@@ -18,9 +18,12 @@ jobs:
       - name: Install BPF toolchain (Clang + libbpf headers only)
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libelf-dev linux-headers-generic
-          # 安装最新 libbpf-dev (含 BTF vmlinux.h 生成工具)
-          sudo apt-get install -y libbpf-dev
+          sudo apt-get install -y clang llvm libelf-dev linux-headers-generic libbpf-dev
+          # Dynamically install bpftool matching current kernel
+          KVER=$(uname -r)
+          sudo apt-get install -y linux-tools-${KVER} || \
+            sudo apt-get install -y linux-tools-azure || \
+            sudo apt-get install -y linux-tools-generic
 
       - name: Generate vmlinux.h from BTF (CO-RE 关键步骤)
         run: |
