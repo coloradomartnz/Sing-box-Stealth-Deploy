@@ -77,7 +77,9 @@ jobs:
 
       - name: Run in virtme VM
         run: |
-          KERNEL=$(ls /boot/vmlinuz-* | head -n1)
+          # Detect available kernel, fallback to generic if specific not found
+          KERNEL=$(ls /boot/vmlinuz-* | sort -V | tail -n1)
+          if [ -z "$KERNEL" ]; then exit 1; fi
           virtme-run \
             --kimg "$KERNEL" \
             --script-sh tests/e2e_vm_test.sh \

@@ -132,4 +132,4 @@ jobs:
             --device /dev/net/tun \
             -v "$(pwd)":/workspace \
             ubuntu:24.04 \
-            bash /workspace/tests/docker_tun_smoke.sh
+            bash -c "apt-get update && apt-get install -y iproute2 kmod && bash /workspace/tests/docker_tun_smoke.sh"
