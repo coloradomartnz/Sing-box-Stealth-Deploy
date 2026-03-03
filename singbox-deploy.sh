@@ -326,7 +326,7 @@ if [ "${ENABLE_DASHBOARD:-0}" -eq 1 ]; then
 	echo ""
 	log_info "========================================================"
 	log_info "💻 面板访问地址: http://127.0.0.1:${DASHBOARD_PORT:-9090}/ui/"
-	local _masked_secret="****"
+	_masked_secret="****"
 	if [ -n "${DASHBOARD_SECRET:-}" ] && [ "${#DASHBOARD_SECRET}" -gt 4 ]; then
 		_masked_secret="${DASHBOARD_SECRET:0:4}****"
 	fi
