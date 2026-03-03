@@ -1,0 +1,10 @@
+[Unit]
+Description=sing-box DNS failover (NextDNS <-> Cloudflare)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/singbox_dns_failover.sh
+StandardOutput=journal
+StandardError=journal

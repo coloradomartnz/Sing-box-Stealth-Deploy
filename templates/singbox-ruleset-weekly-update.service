@@ -1,0 +1,10 @@
+[Unit]
+Description=sing-box weekly ruleset update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/singbox_ruleset_weekly_update.sh
+StandardOutput=journal
+StandardError=journal

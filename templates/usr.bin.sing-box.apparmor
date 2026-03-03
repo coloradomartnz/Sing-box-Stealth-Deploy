@@ -1,0 +1,36 @@
+#include <tunables/global>
+
+/usr/bin/sing-box {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  capability net_admin,
+  capability net_bind_service,
+  # systemd unit 已启用 CAP_NET_RAW，AppArmor 也需放行以避免 DENIED 噪声/潜在功能受限
+  capability net_raw,
+  # 允许访问 TUN 设备节点（否则可能导致 tun 初始化失败）
+  /dev/net/tun rw,
+
+  /usr/bin/sing-box mr,
+  # sing-box 在部分场景会调用 resolvectl（systemd-resolved），允许继承执行
+  /usr/bin/resolvectl ix,
+  /usr/local/etc/sing-box/** r,
+  /var/lib/sing-box/ r,
+  /var/lib/sing-box/** rwk,
+
+  /proc/sys/net/** r,
+  /proc/*/cgroup r,
+  /proc/*/mountinfo r,
+  /sys/devices/virtual/net/** r,
+
+  # O-C1 安全加固: 显式拒绝高风险路径
+  deny /proc/*/mem rw,
+  deny /home/** rw,
+
+  network inet stream,
+  network inet dgram,
+  network inet6 stream,
+  network inet6 dgram,
+  # O-C1: sing-box 需要 netlink 管理路由表
+  network netlink raw,
+}

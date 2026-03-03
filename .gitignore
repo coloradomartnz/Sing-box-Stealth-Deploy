@@ -1,0 +1,22 @@
+# Local configuration
+.deployment_config
+config.json
+providers.json
+
+# Logs and tmp
+*.log
+/tmp/
+
+# Python virtual environment
+venv/
+.venv/
+__pycache__/
+
+# System/IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Docker test artifacts
+Dockerfile.test
+singbox_check.*

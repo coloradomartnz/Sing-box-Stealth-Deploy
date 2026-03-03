@@ -1,0 +1,9 @@
+[Unit]
+Description=sing-box configuration backup
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/etc/sing-box/backup.sh
+StandardOutput=journal
+StandardError=journal

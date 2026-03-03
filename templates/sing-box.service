@@ -1,0 +1,65 @@
+[Unit]
+Description=sing-box TUN transparent proxy
+StartLimitIntervalSec=120
+StartLimitBurst=3
+After=network-online.target nss-lookup.target systemd-resolved.service
+Wants=network-online.target
+Requires=network.target
+
+
+[Service]
+Type=simple
+User=sing-box
+Group=sing-box
+# 关键修复：让 ExecStartPre 的 sing-box check 也在 User=sing-box 上下文执行，避免 root 上下文触发 AppArmor/权限差异
+PermissionsStartOnly=false
+Environment=GODEBUG=http2client=0
+Environment=HOME=/var/lib/sing-box
+Environment=XDG_CACHE_HOME=/var/lib/sing-box
+Environment=ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true
+Environment=ENABLE_DEPRECATED_OUTBOUND_DNS_RULE_ITEM=true
+Environment=ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true
+StateDirectory=sing-box
+StateDirectoryMode=0700
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+NoNewPrivileges=true
+
+ExecStartPre=+/sbin/modprobe tun
+ExecStartPre=+/bin/mkdir -p /dev/net
+ExecStartPre=+/bin/sh -c 'test -c /dev/net/tun || mknod /dev/net/tun c 10 200'
+ExecStartPre=+/bin/chmod 0666 /dev/net/tun
+# O-B3: IPv6 未启用时，禁用 TUN 接口的 IPv6 防止侧漏
+ExecStartPre=+/bin/sh -c '[ -f /proc/sys/net/ipv6/conf/singbox_tun/disable_ipv6 ] && grep -q "HAS_IPV6=\"0\"" /usr/local/etc/sing-box/.deployment_config 2>/dev/null && sysctl -w net.ipv6.conf.singbox_tun.disable_ipv6=1 || true'
+# C-1: 建立 TUN 环境后，注入全局黑洞以丢弃 IPv6 流量（仅 IPv4 环境下）
+ExecStartPre=+/bin/sh -c '[ -d /proc/sys/net/ipv6 ] && grep -q "HAS_IPV6=\"0\"" /usr/local/etc/sing-box/.deployment_config 2>/dev/null && ip -6 route replace blackhole default metric 2048 || true'
+ExecStartPre=/usr/bin/sing-box check -c /usr/local/etc/sing-box/config.json
+ExecStart=/usr/bin/sing-box run -c /usr/local/etc/sing-box/config.json
+
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStopPost=+/bin/sh -c '[ -d /proc/sys/net/ipv6 ] && grep -q "HAS_IPV6=\"0\"" /usr/local/etc/sing-box/.deployment_config 2>/dev/null && ip -6 route del blackhole default metric 2048 || true'
+KillMode=mixed
+KillSignal=SIGTERM
+
+Restart=on-failure
+RestartSec=5s
+RestartPreventExitStatus=1
+
+
+LimitNOFILE=1048576
+LimitNPROC=512
+
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sing-box /usr/local/etc/sing-box
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+WorkingDirectory=/var/lib/sing-box
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

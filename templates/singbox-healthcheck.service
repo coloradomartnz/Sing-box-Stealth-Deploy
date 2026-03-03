@@ -1,0 +1,8 @@
+[Unit]
+Description=sing-box connectivity health check
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/singbox_health_check.sh
+StandardOutput=journal
+StandardError=journal
