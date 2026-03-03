@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"time"
@@ -64,8 +64,8 @@ func main() {
 	cb := NewCircuitBreaker(cfg.CBThreshold, cfg.CBResetTimeout)
 	checker := NewChecker(cfg)
 
-	// Jitter Random Seed
-	rand.Seed(time.Now().UnixNano())
+	// Go 1.20+ manually seeding is deprecated for global rand.
+	// We switched to math/rand/v2 which handles this automatically.
 
 	slog.Info("Watchdog 2.0 Go Sidecar Started", "interval", cfg.CheckInterval, "threshold", cfg.CBThreshold)
 
@@ -83,12 +83,12 @@ func main() {
 		if err != nil {
 			cb.RecordFailure()
 			slog.Error("health check failed", "err", err, "consecutive_failures", cb.Failures())
-			
+
 			if cb.State() == StateOpen {
 				slog.Warn("Circuit Breaker Tripped! Triggering node fallback...")
 				switchToFallback()
 			}
-			
+
 			backoff := calculateBackoffWithJitter(cb.Failures(), cfg)
 			slog.Info("Backing off before next check", "sleep", backoff)
 			time.Sleep(backoff)
@@ -104,16 +104,17 @@ func main() {
 
 // Exponential smoothed jitter algorithm
 func calculateBackoffWithJitter(failures int, cfg Config) time.Duration {
-	shift := failures
+	shift := uint(failures)
 	if shift > 8 {
 		shift = 8
 	}
 	base := cfg.BackoffBase * time.Duration(1<<shift)
-	
+
 	if base > cfg.BackoffMax {
 		base = cfg.BackoffMax
 	}
-	
+
+	// rand/v2.Float64()
 	jitter := time.Duration(float64(base) * cfg.JitterFactor * (rand.Float64()*2 - 1))
 	return base + jitter
 }
@@ -124,12 +125,12 @@ func switchToFallback() {
 	if secret == "" {
 		slog.Warn("DASHBOARD_SECRET environment variable is empty. API call may fail.")
 	}
-	
+
 	cmd := exec.Command("curl", "-sf", "-X", "PUT",
 		"-H", "Authorization: Bearer "+secret,
 		"http://127.0.0.1:9090/proxies/auto-select",
 		"-d", `{"name":"fallback-node"}`)
-	
+
 	if err := cmd.Run(); err != nil {
 		slog.Error("Failed to trigger API fallback", "error", err)
 	} else {

@@ -51,9 +51,12 @@ jobs:
       - name: Install virtme-ng and QEMU
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip qemu-system-x86 linux-image-generic
+          # iproute2 必须安装，VM 内的 ip/tuntap 命令来自宿主 rootfs
+          sudo apt-get install -y qemu-system-x86 linux-image-generic iproute2
           # Break system packages via PEP-668 bypass for virtme
           sudo pip3 install virtme-ng --break-system-packages
+          # 验证 vng 可用
+          vng --version
 
       - name: Create E2E test script
         run: |
@@ -77,15 +80,20 @@ jobs:
 
       - name: Run in virtme VM
         run: |
-          # Detect available kernel, fallback to generic if specific not found
+          # Detect available kernel
           KERNEL=$(ls /boot/vmlinuz-* | sort -V | tail -n1)
-          if [ -z "$KERNEL" ]; then exit 1; fi
-          virtme-run \
+          if [ -z "$KERNEL" ]; then
+            echo "ERROR: No kernel found in /boot" && exit 1
+          fi
+          echo "Using kernel: $KERNEL"
+          # vng is the main command for virtme-ng
+          # --rw is a boolean flag in virtme-ng
+          # Kernel cmdline parameters follow --
+          vng \
             --kimg "$KERNEL" \
             --script-sh tests/e2e_vm_test.sh \
             --memory 512M \
-            --rwdir /tmp/virtme-test \
-            -- --append "loglevel=3"
+            -- loglevel=3
 
   watchdog-unit:
     name: Go Watchdog Build & Test
@@ -94,7 +102,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          # Match go.mod requirement
+          go-version: "1.23"
       - name: Build and Test watchdog binary
         run: |
           cd cmd/watchdog
