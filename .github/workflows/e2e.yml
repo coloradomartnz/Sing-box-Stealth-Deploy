@@ -77,17 +77,9 @@ jobs:
 
       - name: Run in virtme VM
         run: |
-          # Detect available kernel
-          KERNEL=$(ls /boot/vmlinuz-* | sort -V | tail -n1)
-          if [ -z "$KERNEL" ]; then
-            echo "ERROR: No kernel found in /boot" && exit 1
-          fi
-          echo "Using kernel: $KERNEL"
-          # virtme-run is the compatibility shim for virtme-ng
-          # --rw is a boolean flag in virtme-ng
-          # Kernel cmdline parameters follow --
-          virtme-run \
-            --kimg "$KERNEL" \
+          # Use sudo to access protected kernel images on Azure runners
+          sudo virtme-run \
+            --installed-kernel \
             --mods auto \
             --script-sh tests/e2e_vm_test.sh \
             --memory 512M \
