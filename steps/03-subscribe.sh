@@ -9,9 +9,8 @@ deploy_step_03() {
 	if [ "${UPGRADE_MODE:-0}" -eq 1 ]; then
 		log_info "[升级模式] 已存在订阅转换工具，检查更新..."
 		if [ -d "$SB_SUB" ]; then
-			if cd "$SB_SUB"; then
-				git pull 2>/dev/null || true
-			fi
+			# O-5: 使用子 shell 防止 cd 失败后影响后续步骤
+			(cd "$SB_SUB" && git pull 2>/dev/null) || true
 		fi
 	else
 		log_info "从 GitHub 克隆 sing-box-subscribe..."

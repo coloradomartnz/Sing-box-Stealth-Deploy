@@ -3,7 +3,7 @@
 sing-box 地区自动分组脚本
 功能：扫描订阅节点名称中的 emoji 旗帜，自动生成按地区分类的 urltest 出站
 """
-import json, os, sys, fcntl, time
+import json, os, sys, fcntl, time, re
 from collections import defaultdict
 
 def acquire_lock(lockfile, timeout=300):
@@ -147,7 +147,9 @@ def _run_logic():
     def is_regional_indicator(c):
         return 0x1F1E6 <= ord(c) <= 0x1F1FF
 
-    import re
+    # O-21: 预编译正则,避免每次调用都重新编译
+    CC_PATTERN = re.compile(r'\b([A-Z]{2})\b')
+
     def flag_to_cc(s):
         # 尝试通过名字直接匹配
         name_cc_map = {
@@ -184,8 +186,8 @@ def _run_logic():
                 cc = chr(ord('A') + (ord(a) - 0x1F1E6)) + chr(ord('A') + (ord(b) - 0x1F1E6))
                 return cc.lower()
                 
-        # 最后匹配两位大写字母边界词，如 "US", "HK"
-        match = re.search(r'\b([A-Z]{2})\b', s)
+        # O-20: 使用预编译正则匹配两位大写字母边界词
+        match = CC_PATTERN.search(s)
         if match:
             return match.group(1).lower()
             

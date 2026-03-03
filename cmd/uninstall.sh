@@ -156,6 +156,12 @@ do_uninstall() {
 		rm -f /etc/apparmor.d/usr.bin.sing-box
 	fi
 	
+	# IPv6 Stealth Hardening Cleanup
+	if [ -f /etc/sysctl.d/99-sing-box-stealth.conf ]; then
+		rm -f /etc/sysctl.d/99-sing-box-stealth.conf
+		_run sysctl --system >/dev/null 2>&1 || true
+	fi
+	
 	apt-get update -qq 2>/dev/null || true
 	echo "  ✓ 已删除 APT 源、Pinning 和 AppArmor 配置"
 
@@ -179,6 +185,17 @@ do_uninstall() {
 		fi
 	else
 		echo "  - /opt/sing-box-subscribe 不存在，跳过"
+	fi
+
+	echo ""
+	# O-14: 清理 journald 中可能包含敏感信息的日志
+	if command -v journalctl &>/dev/null; then
+		read -p "  是否清理 sing-box 相关日志（可能含敏感信息）？[y/N]: " -n 1 -r CLEAN_LOGS
+		echo
+		if [[ "$CLEAN_LOGS" =~ ^[Yy]$ ]]; then
+			journalctl --vacuum-time=0 --unit=sing-box 2>/dev/null || true
+			echo "  ✓ 已清理 sing-box 日志"
+		fi
 	fi
 
 	echo ""

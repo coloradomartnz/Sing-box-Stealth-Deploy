@@ -5,13 +5,14 @@
 #
 
 set -euo pipefail
+export LC_ALL=C
 export ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true
 export ENABLE_DEPRECATED_OUTBOUND_DNS_RULE_ITEM=true
 export ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true
 
 # 获取脚本所在目录
 PROJECT_DIR="$(dirname "$(readlink -f "$0")")"
-find "$PROJECT_DIR" -name "*.sh" -exec chmod +x {} +
+# O-1: 不再无差别 chmod，由 install/cp 在 step02 控制权限
 
 # 1. 加载核心库
 source "$PROJECT_DIR/lib/globals.sh"
@@ -114,17 +115,18 @@ install_missing_tools || { log_error "必需工具安装失败"; exit 1; }
 acquire_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID" 300 || exit 1
 
 # C-4 修复: 使用全局清理函数，避免 trap 硬覆盖导致子步骤的清理逻辑丢失
-_CLEANUP_HOOKS=()
+# C-1 安全修复: 使用目录数组替代 eval 字符串，消除命令注入风险
+_CLEANUP_DIRS=()
 _cleanup_all() {
 	cleanup_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID"
 	cleanup
-	# 执行所有注册的额外清理钩子
-	for hook in "${_CLEANUP_HOOKS[@]}"; do
-		eval "$hook" 2>/dev/null || true
+	# 安全清理所有注册的临时目录
+	for dir in "${_CLEANUP_DIRS[@]}"; do
+		[ -d "$dir" ] && rm -rf "$dir" 2>/dev/null || true
 	done
 }
-register_cleanup_hook() {
-	_CLEANUP_HOOKS+=("$1")
+register_cleanup_dir() {
+	_CLEANUP_DIRS+=("$1")
 }
 trap '_cleanup_all' EXIT INT TERM
 
@@ -148,7 +150,7 @@ collect_subscription_urls() {
 			[ -z "$url" ] && break
 			AIRPORT_URLS+=("$url")
 			# 提取 tag
-			tag=$(echo "$url" | sed -E 's/.*[\\?&]name=([^&]+).*/\\1/' | head -n1)
+			tag=$(echo "$url" | sed -E 's/.*[?&]name=([^&]+).*/\1/' | head -n1)
 			AIRPORT_TAGS+=("${tag:-sub_$(( ${#AIRPORT_URLS[@]} ))}")
 			log_info "  ✓ 已添加第 ${#AIRPORT_URLS[@]} 个订阅"
 		done
@@ -217,7 +219,8 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 	# 面板配置
 	if [ "$AUTO_YES" -eq 1 ]; then
 		DASHBOARD_PORT=${DASHBOARD_PORT:-9090}
-		DASHBOARD_SECRET=${DASHBOARD_SECRET:-sing-box}
+		# O-13: 自动模式下生成随机 secret，避免使用弱默认值
+		DASHBOARD_SECRET=${DASHBOARD_SECRET:-$(openssl rand -hex 8 2>/dev/null || echo "sing-box")}
 		ENABLE_DASHBOARD=${ENABLE_DASHBOARD:-1}
 	else
 		read -r -p "是否开启面板管理支持 (端口 9090, 秘钥 'sing-box')? [Y/n]: " DASHBOARD_YN_INPUT
@@ -225,8 +228,11 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 			ENABLE_DASHBOARD=1
 			read -r -p "  面板监听端口 [默认: 9090]: " DASHBOARD_PORT_INPUT
 			DASHBOARD_PORT=${DASHBOARD_PORT_INPUT:-9090}
-			read -r -p "  面板访问秘钥 [默认: sing-box]: " DASHBOARD_SECRET_INPUT
-			DASHBOARD_SECRET=${DASHBOARD_SECRET_INPUT:-sing-box}
+			# O-13: 交互模式下也默认生成随机 secret
+			local _DEFAULT_SECRET
+			_DEFAULT_SECRET=$(openssl rand -hex 8 2>/dev/null || echo "sing-box")
+			read -r -p "  面板访问秘钥 [默认: $_DEFAULT_SECRET]: " DASHBOARD_SECRET_INPUT
+			DASHBOARD_SECRET=${DASHBOARD_SECRET_INPUT:-$_DEFAULT_SECRET}
 		else
 			ENABLE_DASHBOARD=0
 			DASHBOARD_PORT=9090
@@ -254,25 +260,15 @@ else
 	log_info "[升级模式] 加载现有配置..."
 	if [ -f "$DEPLOYMENT_CONFIG" ]; then
 		# H-4 安全加固: 验证配置文件格式，防止代码注入
-		if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[^"]*"$|^[[:space:]]*$|^#' "$DEPLOYMENT_CONFIG"; then
+		# C-3 安全修复: 收紧正则，禁止反引号、$()、${}等 shell 扩展字符
+		if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=-]*"$|^[[:space:]]*$|^#' "$DEPLOYMENT_CONFIG"; then
 			log_error "部署配置文件格式异常（包含非法行），可能被篡改: $DEPLOYMENT_CONFIG"
 			log_error "仅允许 KEY=\"VALUE\" 格式。请检查并修复后重试"
 			exit 1
 		fi
 		# shellcheck source=/dev/null
 		source "$DEPLOYMENT_CONFIG"
-		# O-D1 修复: 集中管理所有参数的向下兼容默认值
-		_ensure_compat_defaults() {
-			ENABLE_DASHBOARD=${ENABLE_DASHBOARD:-1}
-			DASHBOARD_PORT=${DASHBOARD_PORT:-9090}
-			DASHBOARD_SECRET=${DASHBOARD_SECRET:-sing-box}
-			IS_DESKTOP=${IS_DESKTOP:-0}
-			HAS_IPV6=${HAS_IPV6:-0}
-			DEFAULT_REGION=${DEFAULT_REGION:-auto}
-			PHYSICAL_MTU=${PHYSICAL_MTU:-1500}
-			RECOMMENDED_TUN_MTU=${RECOMMENDED_TUN_MTU:-1400}
-			LAN_SUBNET=${LAN_SUBNET:-192.168.0.0/16}
-		}
+		# O-16: 使用 lib/utils.sh 中的集中管理函数
 		_ensure_compat_defaults
 	else
 		log_error "未找到部署配置，请先执行完整安装"
@@ -296,14 +292,15 @@ deploy_step_05
 deploy_step_06
 deploy_step_07
 
-	log_info "🎉 部署完成！"
-	log_info "详细状态请运行: $0 --check"
-	
-	if [ "${ENABLE_DASHBOARD:-0}" -eq 1 ]; then
-		echo ""
-		log_info "========================================================"
-		log_info "💻 面板访问地址: http://127.0.0.1:${DASHBOARD_PORT:-9090}/ui/"
-		log_info "🔑 面板访问密钥: ${DASHBOARD_SECRET:-sing-box}"
-		log_info "========================================================"
-		echo ""
-	fi
+# C-4 修复: 移除错误缩进
+log_info "🎉 部署完成！"
+log_info "详细状态请运行: $0 --check"
+
+if [ "${ENABLE_DASHBOARD:-0}" -eq 1 ]; then
+	echo ""
+	log_info "========================================================"
+	log_info "💻 面板访问地址: http://127.0.0.1:${DASHBOARD_PORT:-9090}/ui/"
+	log_info "🔑 面板访问密钥: ${DASHBOARD_SECRET:-sing-box}"
+	log_info "========================================================"
+	echo ""
+fi

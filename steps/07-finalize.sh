@@ -63,6 +63,18 @@ EOF
 		_run apparmor_parser -r /etc/apparmor.d/usr.bin.sing-box || true
 	fi
 
+	# 5.4.1 IPv6 安全加固 (Stealth Hardening)
+	if [ "${HAS_IPV6:-0}" -eq 0 ]; then
+		log_info "IPv4-Only 模式：执行 IPv6 侧漏防护 (Stealth Hardening)..."
+		# A. 持久化 sysctl 禁用 IPv6 (除 lo 外)
+		if [ -f "$template_src_dir/sing-box-stealth-ipv6-disable.conf" ]; then
+			cp "$template_src_dir/sing-box-stealth-ipv6-disable.conf" /etc/sysctl.d/99-sing-box-stealth.conf
+			_run sysctl -p /etc/sysctl.d/99-sing-box-stealth.conf || true
+		fi
+		# B. 注入全局黑洞路由，确保 WebRTC 无法通过旁路探测
+		_run ip -6 route add blackhole default || true
+	fi
+
 	# 5.5 Docker 路由 (如果安装了 Docker)
 	if command -v docker &>/dev/null; then
 		log_info "检测到 Docker，执行初始路由注入..."
@@ -99,6 +111,15 @@ EOF
 		sleep 3
 		if systemctl is-active --quiet sing-box; then
 			log_info "✅ sing-box 服务已启动并通过初步验证"
+			# H-2: IPv6 双栈环境下验证路由是否正确接管
+			if [ "${HAS_IPV6:-0}" -eq 1 ]; then
+				if ip -6 route show table main 2>/dev/null | grep -q singbox_tun; then
+					log_info "  ✓ IPv6 路由已通过 singbox_tun 接管"
+				else
+					log_warn "  ⚠ IPv6 路由未检测到 singbox_tun，可能存在 IPv6 侧漏风险"
+					log_warn "  建议检查: ip -6 route show table main"
+				fi
+			fi
 		else
 			log_error "❌ sing-box 服务启动失败，请检查日志"
 		fi

@@ -180,6 +180,11 @@ deploy_step_06() {
 			log_error "订阅转换执行失败"
 			exit 1
 		fi
+
+		# C-2 安全修复: 立即删除 sing-box-subscribe 目录下的 providers.json 副本
+		# 该副本包含订阅 URL (含 token)，运行完成后无需保留
+		rm -f "$SB_SUB/providers.json" 2>/dev/null || true
+
 		# 如果 save_config_path 未生效，手动移动（兼容性）
 		if [ -f "$SB_SUB/config.json" ]; then
 			mv "$SB_SUB/config.json" "$config_dir/config.json"

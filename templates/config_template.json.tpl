@@ -46,12 +46,13 @@
         "tag": "fallback",
         "type": "udp",
         "server": "8.8.8.8",
-        "server_port": 53
+        "server_port": 53,
+        "detour": "🚀 节点选择"
       }
     ],
     "rules": [
       { "rule_set": ["geosite-cn"], "server": "local" },
-      { "domain_suffix": [".cn", ".中国"], "server": "local" },
+      { "domain_suffix": [".cn", ".中国", ".公司", ".网络"], "server": "local" },
       { "rule_set": ["geosite-geolocation-!cn"], "server": "${REMOTE_MAIN_TAG}" }
     ],
     "final": "${REMOTE_MAIN_TAG}"

@@ -46,8 +46,9 @@ _rollback_logic() {
 	
 	if [ -f "$rollback_tar" ]; then
 		log_info "正在从回滚点恢复..."
-		tar -xzf "$rollback_tar" -C "/usr/local/etc/sing-box" config.json
-		log_info "[+] 已从回滚点恢复旧版配置"
+		# O-19: 恢复所有配置文件（config.json, providers.json, config_template.json）
+		tar -xzf "$rollback_tar" -C "/usr/local/etc/sing-box"
+		log_info "[+] 已从回滚点恢复所有配置"
 	elif [ -f "$config_json.bak" ]; then
 		cp "$config_json.bak" "$config_json"
 		log_info "[+] 已从 .bak 恢复旧版配置"

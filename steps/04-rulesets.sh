@@ -14,7 +14,7 @@ deploy_step_04() {
 	local pids=() log_files=()
 	local dl_log_dir
 	dl_log_dir=$(mktemp -d /tmp/singbox-dl.XXXXXX)
-	register_cleanup_hook "rm -rf '$dl_log_dir'"
+	register_cleanup_dir "$dl_log_dir"
 
 	download_ruleset "$RULESET_GEOSITE_CN_URL" "$ruleset_dir/geosite-cn.srs" \
 		> "$dl_log_dir/geosite-cn.log" 2>&1 &
@@ -43,7 +43,7 @@ deploy_step_04() {
 	rm -rf "$dl_log_dir"
 
 	if [ "$download_fail" -eq 1 ]; then
-		log_error "一个或多个规则集下载失败"
+		log_error "一个或多个规则集下载失败。详细日志已输出到上方"
 		exit 1
 	fi
 

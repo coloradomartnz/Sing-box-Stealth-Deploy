@@ -58,17 +58,15 @@ fi
 # 清理过期备份 (分文件类型保留)
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 清理过期备份..."
 
-# 定义清理函数：保留每个文件类型的最新 N 个副本
+# O-15 修复: 使用 find + sort 安全处理文件名，避免特殊字符导致误删
 cleanup_backups() {
   local dir="$1"
   local keep="$2"
-  # 针对每种配置文件分别清理
   for prefix in config.json providers.json config_template.json; do
-    # 列出该类型的所有备份，按时间倒序
-    # 注意：文件名格式为 prefix.timestamp
-    # 使用 grep 确保只匹配该前缀的文件
-    # shellcheck disable=SC2012
-    (cd "$dir" && ls -1t "${prefix}"* 2>/dev/null | tail -n +$((keep + 1)) | xargs -r rm -f) || true
+    # 按修改时间排序，跳过最新的 N 个，删除其余
+    find "$dir" -maxdepth 1 -name "${prefix}.*" -type f -printf '%T@\t%p\n' 2>/dev/null |
+      sort -t$'\t' -k1 -rn | tail -n +$((keep + 1)) | cut -f2- |
+      while IFS= read -r f; do rm -f "$f"; done
   done
 }
 

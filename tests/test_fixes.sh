@@ -196,7 +196,7 @@ LAN_SUBNET="192.168.1.0/24"
 HAS_IPV6="0"
 EOF
 assert_ok "合法配置格式通过验证" bash -c '
-  ! grep -qvE "^[A-Za-z_][A-Za-z0-9_]*=\"[^\"]*\"$|^[[:space:]]*$|^#" /tmp/test_deploy_config_ok
+  ! grep -qvE "^[A-Za-z_][A-Za-z0-9_]*=\"[A-Za-z0-9_./:, @*=-]*\"$|^[[:space:]]*$|^#" /tmp/test_deploy_config_ok
 '
 
 # 创建恶意配置
@@ -206,7 +206,7 @@ $(rm -rf /)
 LAN_SUBNET="192.168.1.0/24"
 EOF
 assert_ok "恶意配置被拒绝" bash -c '
-  grep -qvE "^[A-Za-z_][A-Za-z0-9_]*=\"[^\"]*\"$|^[[:space:]]*$|^#" /tmp/test_deploy_config_bad
+  grep -qvE "^[A-Za-z_][A-Za-z0-9_]*=\"[A-Za-z0-9_./:, @*=-]*\"$|^[[:space:]]*$|^#" /tmp/test_deploy_config_bad
 '
 
 rm -f /tmp/test_deploy_config_ok /tmp/test_deploy_config_bad

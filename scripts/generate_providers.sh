@@ -24,13 +24,15 @@ IFS=',' read -r -a TAGS <<< "$TAGS_CSV"
 #
 # 不要将本地文件路径设入 config_template，否则 main.py 会 requests.get() 导致 MissingSchema 错误
 
-# O-E3 优化: 单次 jq 调用构造所有订阅，避免 O(N) 次 fork
-# 构造 subscribes JSON 数组
-subs_json="[]"
-for i in "${!URLS[@]}"; do
-  subs_json=$(printf '%s' "$subs_json" | jq --arg tag "${TAGS[$i]}" --arg url "${URLS[$i]}" \
-    '. + [{"tag": $tag, "url": $url}]')
-done
+# H-4 修复: 单次 jq 调用构造所有订阅，避免 O(N) 次 fork
+# 构造 JSON 数组: 将 URL 和 TAG 交错传入，单次 jq 分组
+subs_json=$(jq -n \
+  --argjson count "${#URLS[@]}" \
+  '[$ARGS.positional | to_entries | .[] |
+    if .key < ($count | tonumber) then
+      {"url": .value, "tag": $ARGS.positional[.key + ($count | tonumber)]}
+    else empty end]' \
+  --args -- "${URLS[@]}" "${TAGS[@]}")
 
 jq -n \
   --argjson subs "$subs_json" \

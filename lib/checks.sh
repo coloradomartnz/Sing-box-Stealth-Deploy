@@ -142,6 +142,13 @@ probe_pmtu() {
 	local target="$1"  # 探测目标 IP
 	local max_mtu="$2" # 起始 MTU
 
+	# O-7: 验证探测目标可达性，不可达则尝试国内目标
+	if ! timeout 2 ping -c 1 -W 1 -- "$target" >/dev/null 2>&1; then
+		if timeout 2 ping -c 1 -W 1 -- "223.5.5.5" >/dev/null 2>&1; then
+			target="223.5.5.5"
+		fi
+	fi
+
 	# 二分法探测（从 max_mtu 开始递减）
 	local low=1280
 	local high=$max_mtu

@@ -99,33 +99,9 @@ _on_err_trap() {
 }
 
 cleanup() {
-	# 清除所有临时环境变量（安全版本）
-	local var
-	while IFS= read -r var; do
-		# 跳过空行
-		[ -z "$var" ] && continue
-
-		# 使用 declare -p 检查变量属性
-		local var_decl
-		var_decl=$(declare -p "$var" 2>/dev/null || echo "")
-
-		# 跳过只读变量（包含 -r 或 -ar/-Ar/-ir 等）
-		if [[ "$var_decl" =~ declare[[:space:]]+-[^[:space:]]*r ]]; then
-			continue
-		fi
-
-		# 跳过函数（虽然 compgen -v 不应包含函数，但保险起见）
-		if declare -F "$var" &>/dev/null; then
-			continue
-		fi
-
-		# 安全 unset
-		unset "$var" 2>/dev/null || true
-	done < <(compgen -v | grep -E '^(AIRPORT_|NEXTDNS_|REMOTE_|SUBSCRIBE_)')
-
-	# 显式清理已知敏感变量（防御性编程）
-	unset AIRPORT_URLS AIRPORT_TAGS NEXTDNS_ID REMOTE_MAIN_TAG 2>/dev/null || true
-	unset SUBSCRIBE_COMMIT 2>/dev/null || true
+	# O-3 修复: 显式 unset 已知敏感变量，避免 compgen 性能问题
+	unset AIRPORT_URLS AIRPORT_URLS_STR AIRPORT_TAGS NEXTDNS_ID REMOTE_MAIN_TAG 2>/dev/null || true
+	unset SUBSCRIBE_COMMIT AIRPORT_URLS_STR 2>/dev/null || true
 
 	# 临时文件清理
 	rm -f /usr/local/etc/sing-box/*.tmp 2>/dev/null || true
@@ -232,7 +208,8 @@ _atomic_write() {
 		chmod --reference="$target" "$tmp" 2>/dev/null || true
 	fi
 	
-	if printf '%s\n' "$content" > "$tmp"; then
+	# H-5 修复: 使用 %s 不带 \n，避免对 JSON 等内容添加多余尾部换行
+	if printf '%s' "$content" > "$tmp"; then
 		# C-3 修复: 确保数据落盘后再原子替换
 		sync "$tmp" 2>/dev/null || sync
 		if ! mv "$tmp" "$target"; then
@@ -297,4 +274,17 @@ create_rollback_point() {
 	else
 		log_warn "  ⚠ 未找到任何配置文件，跳过回滚点创建"
 	fi
+}
+
+# O-16: 集中管理参数的向下兼容默认值（升级模式用）
+_ensure_compat_defaults() {
+	ENABLE_DASHBOARD=${ENABLE_DASHBOARD:-1}
+	DASHBOARD_PORT=${DASHBOARD_PORT:-9090}
+	DASHBOARD_SECRET=${DASHBOARD_SECRET:-sing-box}
+	IS_DESKTOP=${IS_DESKTOP:-0}
+	HAS_IPV6=${HAS_IPV6:-0}
+	DEFAULT_REGION=${DEFAULT_REGION:-auto}
+	PHYSICAL_MTU=${PHYSICAL_MTU:-1500}
+	RECOMMENDED_TUN_MTU=${RECOMMENDED_TUN_MTU:-1400}
+	LAN_SUBNET=${LAN_SUBNET:-192.168.0.0/16}
 }

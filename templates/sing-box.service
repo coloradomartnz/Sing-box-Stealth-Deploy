@@ -52,7 +52,9 @@ LimitNPROC=512
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/sing-box /usr/local/etc/sing-box
+# O-12: sing-box 运行时不需要写入配置目录，仅需读取
+ReadWritePaths=/var/lib/sing-box
+ReadOnlyPaths=/usr/local/etc/sing-box
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

@@ -14,7 +14,10 @@
   /usr/bin/sing-box mr,
   # sing-box 在部分场景会调用 resolvectl（systemd-resolved），允许继承执行
   /usr/bin/resolvectl ix,
-  /usr/local/etc/sing-box/** r,
+
+  # O-11 安全加固: 仅允许读取必要的配置文件，不再开放整个目录
+  /usr/local/etc/sing-box/config.json r,
+  /usr/local/etc/sing-box/ui/** r,
   /var/lib/sing-box/ r,
   /var/lib/sing-box/** rwk,
 
@@ -26,6 +29,9 @@
   # O-C1 安全加固: 显式拒绝高风险路径
   deny /proc/*/mem rw,
   deny /home/** rw,
+  # 拒绝读取包含敏感信息的配置文件
+  deny /usr/local/etc/sing-box/providers.json rw,
+  deny /usr/local/etc/sing-box/.deployment_config rw,
 
   network inet stream,
   network inet dgram,

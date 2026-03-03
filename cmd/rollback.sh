@@ -119,23 +119,27 @@ do_rollback() {
 	local all_backups=()
 	local backup_types=()
 
-	while IFS= read -r -d '' file; do
+	# H-3 修复: 使用 find -printf 安全排序，避免文件名含空格时跟截
+	while IFS= read -r file; do
+		[ -z "$file" ] && continue
 		all_backups+=("$file")
 		backup_types+=("daily")
-	done < <(find "$backup_daily" -name "config.json.*" -type f -print0 2>/dev/null |
-		xargs -0 ls -t 2>/dev/null | head -10 | tr '\n' '\0')
+	done < <(find "$backup_daily" -name "config.json.*" -type f -printf '%T@\t%p\n' 2>/dev/null |
+		sort -t$'\t' -k1 -rn | head -10 | cut -f2-)
 
-	while IFS= read -r -d '' file; do
+	while IFS= read -r file; do
+		[ -z "$file" ] && continue
 		all_backups+=("$file")
 		backup_types+=("weekly")
-	done < <(find "$backup_weekly" -name "config.json.*" -type f -print0 2>/dev/null |
-		xargs -0 ls -t 2>/dev/null | head -3 | tr '\n' '\0')
+	done < <(find "$backup_weekly" -name "config.json.*" -type f -printf '%T@\t%p\n' 2>/dev/null |
+		sort -t$'\t' -k1 -rn | head -3 | cut -f2-)
 
-	while IFS= read -r -d '' file; do
+	while IFS= read -r file; do
+		[ -z "$file" ] && continue
 		all_backups+=("$file")
 		backup_types+=("monthly")
-	done < <(find "$backup_monthly" -name "config.json.*" -type f -print0 2>/dev/null |
-		xargs -0 ls -t 2>/dev/null | head -3 | tr '\n' '\0')
+	done < <(find "$backup_monthly" -name "config.json.*" -type f -printf '%T@\t%p\n' 2>/dev/null |
+		sort -t$'\t' -k1 -rn | head -3 | cut -f2-)
 
 	if [ ${#all_backups[@]} -eq 0 ]; then
 		log_error "未找到任何备份文件"
@@ -175,6 +179,19 @@ do_rollback() {
 
 		log_info "正在从备份回滚: $selected_file"
 		cp -f "$selected_file" "$config_dir/config.json"
+
+		# O-17: 同时回滚相同时间戳的 providers.json 和 config_template.json
+		local selected_ts
+		selected_ts=$(echo "$selected_file" | sed 's/.*\.config\.json\.//')
+		local selected_dir
+		selected_dir=$(dirname "$selected_file")
+		for extra_cfg in providers.json config_template.json; do
+			local extra_backup="$selected_dir/$extra_cfg.$selected_ts"
+			if [ -f "$extra_backup" ]; then
+				cp -f "$extra_backup" "$config_dir/$extra_cfg"
+				log_info "  ✓ 同步回滚: $extra_cfg"
+			fi
+		done
 		
 		if ! "$sing_box_bin" check -c "$config_dir/config.json" &>/dev/null; then
 			log_error "回滚后的配置无效"
@@ -185,10 +202,13 @@ do_rollback() {
 
 		systemctl restart sing-box
 		sleep 3
-		if systemctl is-active --quiet sing-box; then
+		# O-18: 与选项1一致，同时验证服务状态和 TUN 接口
+		if systemctl is-active --quiet sing-box &&
+			ip link show singbox_tun &>/dev/null 2>&1; then
 			echo -e "${GREEN}✅ 回滚成功${NC}"
 		else
-			log_error "服务重启失败"
+			log_error "服务重启失败或 TUN 接口未建立"
+			journalctl -u sing-box -n 30 --no-pager
 		fi
 	else
 		log_error "无效选择"
