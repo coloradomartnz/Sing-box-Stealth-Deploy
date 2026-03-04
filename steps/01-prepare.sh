@@ -4,7 +4,7 @@
 #
 
 deploy_step_01() {
-	log_step "========== [1/7] 安装 sing-box 与基础配置 =========="
+	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 安装 sing-box 与基础配置 =========="
 
 	if [ "${UPGRADE_MODE:-0}" -eq 1 ]; then
 		log_info "[升级模式] 检查并更新 sing-box 核心..."

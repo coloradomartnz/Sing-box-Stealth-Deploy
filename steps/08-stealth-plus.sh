@@ -4,7 +4,7 @@
 #
 
 deploy_step_08() {
-	log_step "========== [8/8] Stealth+ 住宅 IP 增强 (可选) =========="
+	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] Stealth+ 住宅 IP 增强 (可选) =========="
 
 	# 1. 检测是否需要配置
 	local enable_res="n"

@@ -80,7 +80,7 @@ install_missing_tools() {
 	local missing=()
 	for cmd in "${tools[@]}"; do
 		if [[ "$cmd" == "python3-venv" ]]; then
-			if ! python3 -m venv --help &>/dev/null; then
+			if ! python3 -m ensurepip --version &>/dev/null; then
 				missing+=("$cmd")
 			fi
 		elif ! command -v "$cmd" &>/dev/null; then

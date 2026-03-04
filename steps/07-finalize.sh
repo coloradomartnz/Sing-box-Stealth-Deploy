@@ -4,7 +4,7 @@
 #
 
 deploy_step_07() {
-	log_step "========== [7/7] 系统集成与启动验证 =========="
+	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 系统集成与启动验证 =========="
 
 	# shellcheck disable=SC2034
 	local config_dir="/usr/local/etc/sing-box"

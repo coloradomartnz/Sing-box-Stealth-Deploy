@@ -4,7 +4,7 @@
 #
 
 deploy_step_02() {
-	log_step "========== [2/7] 创建目录与部署脚本 =========="
+	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 创建目录与部署脚本 =========="
 
 	# 2.1 创建目录结构
 	_run mkdir -p /usr/local/etc/sing-box/backups/{daily,weekly,monthly}

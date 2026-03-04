@@ -4,7 +4,7 @@
 #
 
 deploy_step_04() {
-	log_step "========== [4/7] 预下载规则集（本地化） =========="
+	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 预下载规则集（本地化） =========="
 
 	local ruleset_dir="/var/lib/sing-box/ruleset"
 	_run mkdir -p "$ruleset_dir"

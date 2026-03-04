@@ -4,7 +4,7 @@
 #
 
 deploy_step_06() {
-	log_step "========== [6/7] 生成配置模板与初次订阅 =========="
+	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 生成配置模板与初次订阅 =========="
 
 	local config_dir="/usr/local/etc/sing-box"
 	local template_src_dir

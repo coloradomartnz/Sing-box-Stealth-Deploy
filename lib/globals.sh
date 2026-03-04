@@ -4,7 +4,7 @@
 # sing-box deployment project - global variables
 #
 
-SCRIPT_VERSION="3.0"
+SCRIPT_VERSION="3.1"
 DEPLOYMENT_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 
 # 网络超时设置 (秒)

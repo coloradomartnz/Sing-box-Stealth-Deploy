@@ -68,9 +68,15 @@ execute_all_steps() {
 
     # 按照计算出的序列串行执行。
     # 得益于主循环开启了 set -e，任何函数的非零返回都会直接燘断部署过程。
+    local step_idx=1
+    local total_steps=${#_EXECUTION_PLAN[@]}
     for step in "${_EXECUTION_PLAN[@]}"; do
         if type "$step" &>/dev/null; then
+            # 向下层步骤传递当前真实的序号
+            CURRENT_STEP_INDEX=$step_idx
+            TOTAL_STEPS_COUNT=$total_steps
             "$step"
+            ((step_idx++))
         else
             log_error "未找到步骤实现: $step"
             exit 1

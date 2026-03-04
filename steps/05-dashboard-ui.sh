@@ -4,7 +4,7 @@
 #
 
 deploy_step_05() {
-	log_step "========== [5/7] 安装 MetacubexD 面板 =========="
+	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 安装 MetacubexD 面板 =========="
 
 	if [ "${ENABLE_DASHBOARD:-0}" -ne 1 ]; then
 		log_info "用户选择不开启面板，跳过安装"
