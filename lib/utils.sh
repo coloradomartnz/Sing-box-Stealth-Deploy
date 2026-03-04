@@ -367,7 +367,7 @@ download_release_asset() {
 	if [[ "$tag" =~ ^v[0-9] ]]; then
 		local direct_url="https://github.com/${owner}/${repo}/releases/download/${tag}/${asset_name}"
 		log_info "  GitHub Tag ($tag) 已识别，尝试直接下载..."
-		if curl -fsSL --connect-timeout "${CONNECT_TIMEOUT:-5}" -m "${MAX_TIME:-20}" -o "$dest" "$direct_url"; then
+		if curl -fsSL --connect-timeout "${CONNECT_TIMEOUT:-5}" -m "${MAX_TIME:-60}" --retry 3 -o "$dest" "$direct_url"; then
 			return 0
 		fi
 		log_warn "  直接下载失败，尝试 fallback 到 GitHub API..."
@@ -379,8 +379,7 @@ download_release_asset() {
 	
 	# 检查 jq 是否可用
 	if ! command -v jq &>/dev/null; then
-		log_warn "  系统缺失 jq，无法解析 GitHub API，尝试最后一次直接下载 (main 分支可能对应的最新 tag)..."
-		# 这是一个最后的努力，如果 API 不行，假定 tag 是主版本（目前不稳，暂不启用复杂逻辑）
+		log_warn "  系统缺失 jq，无法解析 GitHub API。"
 		return 1
 	fi
 
@@ -390,7 +389,7 @@ download_release_asset() {
 		"$api_url" | jq -r ".assets[] | select(.name == \"$asset_name\") | .browser_download_url" 2>/dev/null)
 
 	if [ -n "$download_url" ] && [ "$download_url" != "null" ]; then
-		if curl -fsSL --connect-timeout "${CONNECT_TIMEOUT:-5}" -m "${MAX_TIME:-30}" -o "$dest" "$download_url"; then
+		if curl -fsSL --connect-timeout "${CONNECT_TIMEOUT:-5}" -m "${MAX_TIME:-60}" --retry 3 -o "$dest" "$download_url"; then
 			return 0
 		fi
 	fi

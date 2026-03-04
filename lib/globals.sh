@@ -4,14 +4,14 @@
 # sing-box deployment project - global variables
 #
 
-SCRIPT_VERSION="3.3"
+SCRIPT_VERSION="3.4"
 GITHUB_OWNER="coloradomartnz"
 GITHUB_REPO="Sing-box-Stealth-Deploy"
 DEPLOYMENT_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 
 # 网络超时设置 (秒)
 CONNECT_TIMEOUT=5
-MAX_TIME=10
+MAX_TIME=60
 
 # sing-box 二进制路径（统一引用点，安装后赋值）
 SING_BOX_BIN=$(command -v sing-box 2>/dev/null || echo "/usr/bin/sing-box")
