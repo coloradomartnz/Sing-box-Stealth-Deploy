@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [ "main", "master" ]
+    tags:
+      - 'v*'          # 推送任意 v* 标签时触发发布
   pull_request:
     branches: [ "main", "master" ]
 
@@ -57,6 +59,31 @@ jobs:
           name: bpf-objects
           path: ebpf/tproxy_tc.bpf.o
           retention-days: 90
+
+  # ---------------------------------------------------------------
+  # 仅在推送 v* 标签时运行：创建 GitHub Release 并附加 BPF 对象
+  # ---------------------------------------------------------------
+  release-bpf:
+    name: Create Release and Upload BPF
+    needs: [build-bpf]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write   # 允许创建 Release 及上传附件
+    steps:
+      - name: Download compiled BPF object
+        uses: actions/download-artifact@v4
+        with:
+          name: bpf-objects
+          path: .
+
+      - name: Publish GitHub Release with BPF attachment
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tproxy_tc.bpf.o
+          generate_release_notes: true   # 自动生成本次 tag 的变更说明
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   shellcheck:
     name: ShellCheck Lint
