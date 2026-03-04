@@ -68,6 +68,14 @@ deploy_step_02() {
 
 	# 2.2.5 Deploy Go Watchdog sidecar
 	_deploy_watchdog_binary "$PROJECT_DIR"
+
+	# 2.3 初始化自定义分流规则列表
+	log_info "初始化自定义分流列表..."
+	_run touch /usr/local/etc/sing-box/direct_list.txt
+	_run touch /usr/local/etc/sing-box/proxy_list.txt
+	_run chmod 644 /usr/local/etc/sing-box/direct_list.txt /usr/local/etc/sing-box/proxy_list.txt
+
+	echo ""
 }
 
 # ---------------------------------------------------------------------------
@@ -121,11 +129,3 @@ _deploy_watchdog_binary() {
 	return 0
 }
 
-	# 2.3 初始化自定义分流规则列表
-	log_info "初始化自定义分流列表..."
-	_run touch /usr/local/etc/sing-box/direct_list.txt
-	_run touch /usr/local/etc/sing-box/proxy_list.txt
-	_run chmod 644 /usr/local/etc/sing-box/direct_list.txt /usr/local/etc/sing-box/proxy_list.txt
-
-	echo ""
-}
