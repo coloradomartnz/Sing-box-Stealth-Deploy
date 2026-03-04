@@ -244,6 +244,7 @@ deploy_step_06() {
 		if [ -f "$SB_SUB/config.json" ]; then
 			mv "$SB_SUB/config.json" "$config_dir/config.json"
 		fi
+	fi
 
 	# 4.4 地区自动分组
 	log_info "扫描地区并生成分组..."
@@ -258,7 +259,7 @@ deploy_step_06() {
 	local _fixed_config
 	_fixed_config=$(mktemp /tmp/singbox-dns-fix.XXXXXX)
 
-	jq '
+	if jq '
 	  # 1. 彻底删掉所有 address 或 server 字段值为 ":53" 的 dns.servers 条目
 	  .dns.servers |= map(select(.address != ":53" and .server != ":53")) |
 	  # 2. 补回/修正 tag=="local" 的条目，确保它指向可靠的地址
@@ -271,9 +272,12 @@ deploy_step_06() {
 	      "domain_resolver": "bootstrap"
 	    }] + .dns.servers
 	  else . end
-	' "$config_dir/config.json" > "$_fixed_config" \
-	  && mv "$_fixed_config" "$config_dir/config.json" \
-	|| { log_warn "DNS 终极修复失败"; rm -f "$_fixed_config"; }
+	' "$config_dir/config.json" > "$_fixed_config"; then
+		mv "$_fixed_config" "$config_dir/config.json"
+	else
+		log_warn "DNS 终极修复失败"
+		rm -f "$_fixed_config"
+	fi
 
 	# 4.6 配置校验
 	log_info "配置最终校验..."
