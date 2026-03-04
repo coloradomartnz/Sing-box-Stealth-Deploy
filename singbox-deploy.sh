@@ -77,7 +77,7 @@ usage() {
 	echo "  --check       检查运行环境健康状态 (health check)"
 	echo "  --uninstall   完整卸载 sing-box 及配置 (full uninstall)"
 	echo "  --rollback    回滚到之前的配置文件 (rollback config)"
-	echo "  --upgrade     仅执行升级（不重新询问配置）("upgrade" only)"
+	echo "  --upgrade     仅执行升级（不重新询问配置）(\"upgrade\" only)"
 	echo "  --substore    部署附带 Sub-Store 的完整订阅管理方案"
 	echo "  --dry-run     仅显示将要执行的命令 (dry run)"
 	echo "  --auto-yes    自动执行，无需交互确认 (non-interactive)"
