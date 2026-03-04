@@ -66,14 +66,60 @@ deploy_step_02() {
 		fi
 	done
 
-	# 2.2.5 Build and deploy Go Watchdog sidecar
-	log_info "编译并部署 singbox-watchdog (Go Sidecar)..."
-	if command -v go &>/dev/null && [ -d "$project_root/cmd/watchdog" ]; then
-		_run bash -c "cd $project_root/cmd/watchdog && go build -o /usr/local/bin/singbox-watchdog ."
-		log_info "  ✓ 已编译并部署 Go Watchdog"
-	else
-		log_warn "  ⚠ 未获取到 Go 环境或 cmd/watchdog 目录，跳过 Watchdog 构建 (如果在 CI 中已预构建则忽略此警告)"
+	# 2.2.5 Deploy Go Watchdog sidecar
+	_deploy_watchdog_binary "$PROJECT_DIR"
+}
+
+# ---------------------------------------------------------------------------
+# _deploy_watchdog_binary <project_root>
+# 优先从 GitHub Release 下载预编译的 amd64 二进制，若失败且本地有 Go 则尝试动态编译
+# ---------------------------------------------------------------------------
+_deploy_watchdog_binary() {
+	local project_root="$1"
+	local target="/usr/local/bin/singbox-watchdog"
+	local watchdog_src="$project_root/cmd/watchdog"
+
+	log_info "部署 singbox-watchdog (Go Sidecar)..."
+
+	# 1. 尝试从 GitHub Release 下载 (推荐，无环境依赖)
+	local release_url
+	release_url=$(curl -sf \
+		--connect-timeout "${CONNECT_TIMEOUT:-5}" \
+		-m "${MAX_TIME:-10}" \
+		"https://api.github.com/repos/coloradomartnz/Sing-box-Stealth-Deploy/releases/latest" \
+		| jq -r '.assets[] | select(.name == "singbox-watchdog") | .browser_download_url' \
+	) || release_url=""
+
+	if [ -n "$release_url" ]; then
+		log_info "  尝试下载预编译二进制: $release_url"
+		if _run curl -fsSL -o "$target" "$release_url"; then
+			chmod +x "$target"
+			log_info "  ✓ 已成功下载并部署预编译 Watchdog"
+			return 0
+		fi
+		log_warn "  预编译二进制下载失败，尝试本地编译..."
 	fi
+
+	# 2. 回退到本地编译 (仅当有 Go 环境时)
+	if command -v go &>/dev/null && [ -d "$watchdog_src" ]; then
+		log_info "  本地 Go 环境就绪，正在尝试编译..."
+		# GOTOOLCHAIN=local 防止 Go 尝试下载新版本工具链（可能导致 sudo 环境挂起）
+		if _run bash -c "export GOTOOLCHAIN=local && cd $watchdog_src && go build -ldflags \"-s -w\" -o $target ."; then
+			chmod +x "$target"
+			log_info "  ✓ 已通过本地编译部署 Go Watchdog"
+			return 0
+		else
+			log_warn "  本地编译失败。"
+		fi
+	else
+		[ ! -d "$watchdog_src" ] && log_warn "  ⚠ 未找到 cmd/watchdog 源代码。"
+		! command -v go &>/dev/null && log_warn "  ⚠ 未检测到 Go 环境。"
+	fi
+
+	# 3. 如果都失败了，视情况决定是否报错（目前 Watchdog 是非核心组件）
+	log_warn "  ⚠ 无法获取 Watchdog 二进制。将在缺少 Watchdog 模式下运行。"
+	return 0
+}
 
 	# 2.3 初始化自定义分流规则列表
 	log_info "初始化自定义分流列表..."

@@ -51,4 +51,6 @@ SUBSTORE_COLLECTION_NAME="MySubs"
 RULESET_GEOSITE_CN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs"
 RULESET_GEOSITE_GEOLOC_NONCN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-geolocation-!cn.srs"
 RULESET_GEOIP_CN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geoip/geoip-cn.srs"
-RULESET_GEOSITE_OPENAI_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-openai.srs"
+# lyc8503 仓库无 openai 规则集，改用 MetaCubeX 源；FALLBACK 在主源失败时自动尝试
+RULESET_GEOSITE_OPENAI_URL="https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs"
+RULESET_GEOSITE_OPENAI_URL_FALLBACK="https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs"

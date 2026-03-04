@@ -65,12 +65,36 @@ jobs:
           path: ebpf/tproxy_tc.bpf.o
           retention-days: 90
 
+  build-go:
+    name: Build Go Watchdog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.5'
+          cache-dependency-path: cmd/watchdog/go.sum
+
+      - name: Build Watchdog
+        run: |
+          cd cmd/watchdog
+          GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ../../singbox-watchdog .
+
+      - name: Upload Watchdog Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchdog-binary
+          path: singbox-watchdog
+          retention-days: 90
+
   # ---------------------------------------------------------------
-  # 仅在推送 v* 标签时运行：创建 GitHub Release 并附加 BPF 对象
+  # 仅在推送 v* 标签时运行：创建 GitHub Release 并附加 BPF 对象和 Watchdog 二进制
   # ---------------------------------------------------------------
-  release-bpf:
-    name: Create Release and Upload BPF
-    needs: [build-bpf]
+  release-assets:
+    name: Create Release and Upload Assets
+    needs: [build-bpf, build-go]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -82,10 +106,18 @@ jobs:
           name: bpf-objects
           path: .
 
-      - name: Publish GitHub Release with BPF attachment
+      - name: Download compiled Watchdog binary
+        uses: actions/download-artifact@v4
+        with:
+          name: watchdog-binary
+          path: .
+
+      - name: Publish GitHub Release with assets
         uses: softprops/action-gh-release@v2
         with:
-          files: tproxy_tc.bpf.o
+          files: |
+            tproxy_tc.bpf.o
+            singbox-watchdog
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
