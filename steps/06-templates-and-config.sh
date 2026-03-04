@@ -16,11 +16,11 @@ deploy_step_06() {
 	# 设置模板变量
 	local tun_address dns_strategy bootstrap_dns
 	if [ "${HAS_IPV6:-0}" -eq 1 ]; then
-		tun_address='"172.18.0.1/30", "fd00::1/126"'
-		dns_strategy='"strategy": "prefer_ipv4",'
+		tun_address='["172.18.0.1/30", "fd00::1/126"]'
+		dns_strategy='"prefer_ipv4"'
 	else
-		tun_address='"172.18.0.1/30"'
-		dns_strategy='"strategy": "ipv4_only",'
+		tun_address='["172.18.0.1/30"]'
+		dns_strategy='"ipv4_only"'
 	fi
 
 	# 自动选择 Bootstrap DNS
@@ -92,48 +92,75 @@ deploy_step_06() {
 
 	# 处理 config_template.json.tpl
 	if [ -f "$template_src_dir/config_template.json.tpl" ]; then
-		local tmp_tpl
-		tmp_tpl=$(mktemp /tmp/singbox-tpl.XXXXXX)
+		local safe_secret="${DASHBOARD_SECRET:-sing-box}"
+		local safe_res_pass="${RES_PASS:-}"
+		local safe_res_user="${RES_USER:-}"
 		
-		# 第一阶段: sed 处理简单标量变量 (变成 100% 格式合法的基础 JSON)
-		sed -e "s|\${TUN_ADDRESS}|${tun_address}|g" \
-		    -e "s|\${DNS_STRATEGY}|${dns_strategy}|g" \
-		    -e "s|\${BOOTSTRAP_DNS_IPV4}|${bootstrap_dns}|g" \
-		    -e "s|\${LOCAL_DOH_HOST}|dns.alidns.com|g" \
-		    -e "s|\${LOCAL_DOH_PATH}|/dns-query|g" \
-		    -e "s|\${REMOTE_CF_HOST}|cloudflare-dns.com|g" \
-		    -e "s|\${REMOTE_CF_PATH}|/dns-query|g" \
-		    -e "s|\${REMOTE_MAIN_TAG}|${REMOTE_MAIN_TAG:-remote_cf}|g" \
-		    -e "s|\${DASHBOARD_PORT}|${DASHBOARD_PORT:-9090}|g" \
-		    -e "s|\${DASHBOARD_SECRET}|${DASHBOARD_SECRET:-sing-box}|g" \
-		    -e "s|\${RECOMMENDED_TUN_MTU}|${RECOMMENDED_TUN_MTU:-1400}|g" \
-		    -e "s|\${LAN_SUBNET}|${LAN_SUBNET:-192.168.0.0/16}|g" \
-		    -e "s|\${RES_HOST}|${RES_HOST:-}|g" \
-		    -e "s|\${RES_PORT_INT}|${RES_PORT:-0}|g" \
-		    -e "s|\${RES_USER}|${RES_USER:-}|g" \
-		    -e "s|\${RES_PASS}|${RES_PASS:-}|g" \
-		    "$template_src_dir/config_template.json.tpl" > "$tmp_tpl"
-		
-		# 第二阶段: 依托 JQ 进行对象级无损注入
-		jq --argjson cr "$cr_arr" \
+		# O-Secure 5.3: 提取敏感信息至凭证安全目录
+		local cred_dir="/usr/local/etc/sing-box/.credentials"
+		_run mkdir -p "$cred_dir"
+		_run chmod 700 "$cred_dir"
+		echo -n "$safe_secret" > "$cred_dir/dash_secret"
+		echo -n "$safe_res_pass" > "$cred_dir/res_pass"
+		echo -n "$safe_res_user" > "$cred_dir/res_user"
+		_run chmod 600 "$cred_dir"/*
+
+		# 第一阶段: 使用 JQ 构建参数变量的临时 JSON
+		local vars_json
+		vars_json=$(mktemp /tmp/singbox-vars.XXXXXX)
+		jq -n \
+		   --arg tun_address "$tun_address" \
+		   --arg dns_strategy "$dns_strategy" \
+		   --arg bootstrap_dns "$bootstrap_dns" \
+		   --arg remote_tag "${REMOTE_MAIN_TAG:-remote_cf}" \
+		   --arg dash_port "${DASHBOARD_PORT:-9090}" \
+		   --arg mtu "${RECOMMENDED_TUN_MTU:-1400}" \
+		   --arg lan_subnet "${LAN_SUBNET:-192.168.0.0/16}" \
+		   --arg res_host "${RES_HOST:-127.0.0.1}" \
+		   --arg res_port "${RES_PORT:-0}" \
+		  '{
+		     tun_address: ($tun_address | fromjson),
+		     dns_strategy: ($dns_strategy | fromjson),
+		     bootstrap_dns, remote_tag, dash_port,
+		     mtu: ($mtu | tonumber), lan_subnet, res_host,
+		     res_port: ($res_port | tonumber)
+		   }' > "$vars_json"
+
+		# 第二阶段: 依托 JQ 进行对象级无损注入 (此处不注入任何敏感密码信息，由启动脚本挂载)
+		jq --slurpfile vars "$vars_json" \
+		   --argjson cr "$cr_arr" \
 		   --argjson cd "$cd_arr" \
-		   --argjson nd "$nd_json" \
+		   --arg nd "$nd_json" \
 		   --arg has_res "${RES_HOST:+1}" \
 		   '
+		   ($vars[0]) as $v |
+		   .experimental.clash_api.external_controller = "127.0.0.1:\($v.dash_port)" |
+		   .dns.strategy = $v.dns_strategy |
+		   (.dns.servers[] | select(.tag == "bootstrap").server) = $v.bootstrap_dns |
+		   (.dns.rules[] | select(.rule_set == ["geosite-geolocation-!cn"]).server) = $v.remote_tag |
+		   .dns.final = $v.remote_tag |
+		   .inbounds[0].address = $v.tun_address |
+		   .inbounds[0].mtu = $v.mtu |
+		   .inbounds[0].route_exclude_address[0] = $v.lan_subnet |
+		   (.outbounds[] | select(.tag == "🏠 住宅代理-中转出口") | .server) = $v.res_host |
+		   (.outbounds[] | select(.tag == "🏠 住宅代理-中转出口") | .server_port) = $v.res_port |
 		   .route.rules = (.route.rules[:2] + $cr + .route.rules[2:]) |
 		   .dns.rules = ($cd + .dns.rules) |
-		   (if $nd != null then .dns.servers = (.dns.servers[:3] + [$nd] + .dns.servers[3:]) else . end) |
+		   # ND JSON may be string "null" or json from earlier steps.
+		   (if $nd != "null" then .dns.servers = (.dns.servers[:3] + [$nd|fromjson] + .dns.servers[3:]) else . end) |
 		   # Stealth+ 逻辑：如果未配置住宅代理，移除相关出站并修改 AI 组
 		   (if $has_res == "" then
 		     del(.outbounds[] | select(.tag == "🏠 住宅代理-中转出口")) |
 		     (.outbounds[] |= if .tag == "🤖 AI专用-精准分流" then .outbounds = ["🚀 节点选择", "direct"] | .default = "🚀 节点选择" else . end)
 		   else . end)
-		   ' "$tmp_tpl" | _atomic_write "$config_dir/config_template.json"
+		   ' "$template_src_dir/config_template.json.tpl" | _atomic_write "$config_dir/config_template.json"
 		
-		rm -f "$tmp_tpl"
+		rm -f "$vars_json"
 		
 		# [New] 同时部署文档模板
 		if [ -f "$template_src_dir/config_template.md.tpl" ]; then
+			local safe_nextdns_id
+			safe_nextdns_id=$(_sed_escape_replacement "${NEXTDNS_ID:-}")
 			sed -e "s|\${MAIN_IFACE}|${MAIN_IFACE}|g" \
 			    -e "s|\${LAN_SUBNET}|${LAN_SUBNET}|g" \
 			    -e "s|\${PHYSICAL_MTU}|${PHYSICAL_MTU}|g" \
@@ -145,9 +172,9 @@ deploy_step_06() {
 			    -e "s|\${REMOTE_CF_HOST}|cloudflare-dns.com|g" \
 			    -e "s|\${REMOTE_CF_PATH}|/dns-query|g" \
 			    -e "s|\${NEXTDNS_HOST}|dns.nextdns.io|g" \
-			    -e "s|\${NEXTDNS_ID}|${NEXTDNS_ID}|g" \
+			    -e "s|\${NEXTDNS_ID}|${safe_nextdns_id}|g" \
 			    -e "s|\${DASHBOARD_PORT}|${DASHBOARD_PORT}|g" \
-			    -e "s|\${DASHBOARD_SECRET}|${DASHBOARD_SECRET}|g" \
+			    -e "s|\${DASHBOARD_SECRET}|${safe_secret}|g" \
 			    -e "s|\${REMOTE_MAIN_TAG}|${REMOTE_MAIN_TAG:-remote_cf}|g" \
 			    "$template_src_dir/config_template.md.tpl" | _atomic_write "$config_dir/docs/config_template.md"
 		fi
@@ -193,7 +220,7 @@ deploy_step_06() {
 
 		if ! (cd "$SB_SUB" && "$py_bin" main.py --template_index=0); then
 			log_error "订阅转换执行失败"
-			exit 1
+			exit "${E_CONFIG:-11}"
 		fi
 
 		# C-2 安全修复: 立即删除 sing-box-subscribe 目录下的 providers.json 副本
@@ -216,7 +243,7 @@ deploy_step_06() {
 	log_info "配置最终校验..."
 	if ! validate_sing_box_config "$config_dir/config.json"; then
 		log_error "生成的配置校验不通过"
-		exit 1
+		exit "${E_CONFIG:-11}"
 	fi
 
 	echo ""

@@ -46,27 +46,51 @@ int redirect_docker_to_singbox(struct __sk_buff *skb) {
   if ((void *)(eth + 1) > data_end)
     return TC_ACT_OK;
 
-  // ② 仅处理 IPv4 TCP/UDP（IPv6 走单独逻辑，此处 pass-through）
-  if (eth->h_proto != ETH_P_IP_BE)
-    return TC_ACT_OK;
+  __be16 h_proto = eth->h_proto;
+  int l2_len = sizeof(struct ethhdr);
 
-  struct iphdr *ip = (void *)(eth + 1);
-  if ((void *)(ip + 1) > data_end)
-    return TC_ACT_OK;
+  // 解析 802.1Q VLAN Tag 帧 
+  if (h_proto == bpf_htons(0x8100) || h_proto == bpf_htons(0x88A8)) {
+    struct vlan_hdr *vlan = (void *)(eth + 1);
+    if ((void *)(vlan + 1) > data_end)
+      return TC_ACT_OK;
+    h_proto = vlan->h_vlan_encapsulated_proto;
+    l2_len += sizeof(struct vlan_hdr);
+  }
 
-  if (ip->protocol != IPPROTO_TCP && ip->protocol != IPPROTO_UDP)
-    return TC_ACT_OK;
+  // ② 处理 IPv4 和 IPv6 TCP/UDP
+  if (h_proto == ETH_P_IP_BE) {
+    struct iphdr *ip = data + l2_len;
+    if ((void *)(ip + 1) > data_end)
+      return TC_ACT_OK;
+    
+    if (ip->protocol != IPPROTO_TCP && ip->protocol != IPPROTO_UDP)
+      return TC_ACT_OK;
 
-  // ③ 查询旁路表：对 LAN/Docker 内部通信直接放行
-  struct {
-    __u32 prefixlen;
-    __u32 addr;
-  } key = {
-      .prefixlen = 32,
-      .addr = ip->daddr, // 目的 IP 查表
-  };
-  if (bpf_map_lookup_elem(&bypass_cidr_map, &key))
-    return TC_ACT_OK; // 命中直连段，不劫持
+    // ③ 查询旁路表：对 LAN/Docker 内部 IPv4 通信直接放行
+    struct {
+      __u32 prefixlen;
+      __u32 addr;
+    } key = {
+        .prefixlen = 32,
+        .addr = ip->daddr, // 目的 IP 查表
+    };
+    if (bpf_map_lookup_elem(&bypass_cidr_map, &key))
+      return TC_ACT_OK; // 命中直连段，不劫持
+
+  } else if (h_proto == ETH_P_IPV6_BE) {
+    struct ipv6hdr *ipv6 = data + l2_len;
+    if ((void *)(ipv6 + 1) > data_end)
+      return TC_ACT_OK;
+    
+    if (ipv6->nexthdr != IPPROTO_TCP && ipv6->nexthdr != IPPROTO_UDP)
+      return TC_ACT_OK;
+      
+    // IPv6 当前全量代理，后续可扩展 bypass map
+  } else {
+    // 非 IP 报文，放路
+    return TC_ACT_OK;
+  }
 
   // ④ 获取 singbox_tun ifindex（运行时从 Map 读取，避免硬编码）
   __u32 map_key = 0;
@@ -74,10 +98,10 @@ int redirect_docker_to_singbox(struct __sk_buff *skb) {
   if (!tun_ifindex || *tun_ifindex == 0)
     return TC_ACT_OK; // Map 未初始化，安全降级
 
-  // ⑤ 关键：剥掉 Ethernet header，TUN 是 L3 设备不理解 L2
+  // ⑤ 关键：剥掉 L2 header，TUN 是 L3 设备不理解 L2
   // bpf_skb_adjust_room 负数 = 从头部裁掉 N 字节
   // BPF_ADJ_ROOM_MAC = 操作的是 MAC 层（以太网头）
-  if (bpf_skb_adjust_room(skb, -(int)ETH_HLEN, BPF_ADJ_ROOM_MAC, 0) < 0)
+  if (bpf_skb_adjust_room(skb, -l2_len, BPF_ADJ_ROOM_MAC, 0) < 0)
     return TC_ACT_OK; // 裁剪失败，安全放行
 
   // ⑥ 直接砸给 singbox_tun，完全绕过 IP 路由子系统和 Netfilter

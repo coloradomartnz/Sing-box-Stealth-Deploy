@@ -26,7 +26,8 @@ acquire_deploy_lock() {
 			lock_pid=$(cat "$pid_file" 2>/dev/null || echo "")
 			
 			if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
-				log_warn "检测到过期部署锁 (PID $lock_pid)，继续尝试获取..."
+				log_warn "检测到过期部署锁 (PID $lock_pid)，尝试清理..."
+				rm -f "$pid_file" 2>/dev/null || true
 			fi
 		fi
 		
@@ -74,7 +75,8 @@ acquire_script_lock() {
       lock_pid=$(cat "$pid_file" 2>/dev/null || echo "")
       
       if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
-        echo "[INFO] 检测到僵尸锁（PID $lock_pid），等待清理..." >&2
+        echo "[INFO] 检测到僵尸锁（PID $lock_pid），自动清理..." >&2
+        rm -f "$pid_file" 2>/dev/null || true
       fi
     fi
     
@@ -91,15 +93,18 @@ acquire_script_lock() {
   # 写入 PID
   echo $$ > "$pid_file" 2>/dev/null || true
   
-  # C-2 修复: 链式 trap 注册，保留调用方已注册的 EXIT/INT/TERM trap (安全获取 trap 方式)
-  local _old_trap
-  _old_trap=$(trap -p EXIT | sed -E 's/^trap -- (.*) EXIT$/\1/')
-  local _lock_cleanup="rm -f '$pid_file' 2>/dev/null; exec ${lock_fd}>&-"
-  if [ -n "$_old_trap" ]; then
-    eval "trap \"${_lock_cleanup}; eval \$_old_trap\" EXIT INT TERM"
+  # C-2 修复: 避免 eval 注入，安全的 trap 拼接
+  local _lock_cleanup="rm -f '${pid_file}' 2>/dev/null; exec ${lock_fd}>&-"
+  local _existing_trap
+  # 提取已有的 EXIT trap 命令内容 (去除外层的 trap -- '...' EXIT)
+  _existing_trap=$(trap -p EXIT | grep -oP "^trap -- '\K.*(?=' EXIT$)")
+  
+  if [ -n "$_existing_trap" ]; then
+    # shellcheck disable=SC2064
+    trap "$_lock_cleanup; $_existing_trap" EXIT INT TERM
   else
     # shellcheck disable=SC2064
-    trap "${_lock_cleanup}" EXIT INT TERM
+    trap "$_lock_cleanup" EXIT INT TERM
   fi
   
   return 0

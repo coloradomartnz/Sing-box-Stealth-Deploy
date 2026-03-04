@@ -11,8 +11,7 @@ deploy_step_08() {
 	if [ "${UPGRADE_MODE:-0}" -eq 1 ]; then
 		# 升级模式下，检查是否已有配置
 		if [ -f "$DEPLOYMENT_CONFIG" ]; then
-			# shellcheck source=/dev/null
-			source "$DEPLOYMENT_CONFIG"
+			_safe_source_deployment_config "$DEPLOYMENT_CONFIG"
 			if [ -n "${RES_HOST:-}" ]; then
 				enable_res="y"
 				log_info "检测到既有住宅代理配置，将自动维护监控服务"
@@ -45,9 +44,6 @@ deploy_step_08() {
 	if [ -f "$watchdog_tpl" ]; then
 		sed -e "s|\${RES_HOST}|$RES_HOST|g" \
 		    -e "s|\${RES_PORT}|$RES_PORT|g" \
-		    -e "s|\${RES_USER}|$RES_USER|g" \
-		    -e "s|\${RES_PASS}|$RES_PASS|g" \
-		    -e "s|\${DASHBOARD_SECRET}|${DASHBOARD_SECRET:-sing-box}|g" \
 		    -e "s|\${DASHBOARD_PORT}|${DASHBOARD_PORT:-9090}|g" \
 		    "$watchdog_tpl" > "$watchdog_dest"
 		chmod +x "$watchdog_dest"

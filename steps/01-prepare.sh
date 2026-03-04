@@ -12,11 +12,12 @@ deploy_step_01() {
 		_run apt-get install --only-upgrade -y sing-box
 	else
 		# 1.1 必需工具检查与安装
-		install_missing_tools || exit 1
+		install_missing_tools || exit "${E_DEPENDENCY:-14}"
 		download_bpf_object
 
 		# 1.2 安装 sing-box
 		if command -v sing-box &>/dev/null; then
+			local CURRENT_VERSION REINSTALL
 			CURRENT_VERSION=$(sing-box version 2>&1 | head -n1)
 			log_warn "sing-box 已安装：$CURRENT_VERSION"
 			# 如果是自动模式或 dry-run，跳过确认
@@ -50,7 +51,7 @@ EOF
 
 			if [ "${DRY_RUN:-0}" -eq 0 ] && ! command -v sing-box &>/dev/null; then
 				log_error "sing-box 安装失败"
-				exit 1
+				exit "${E_DEPENDENCY:-14}"
 			fi
 		fi
 	fi

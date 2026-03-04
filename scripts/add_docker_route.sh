@@ -12,6 +12,11 @@ EBPF_TC_MODE=0
 
 # 读取部署配置
 if [ -f "/usr/local/etc/sing-box/.deployment_config" ]; then
+  # 收紧正则，禁止反引号、$()、${} 等 shell 扩展
+  if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=%+\[\]-]*"$|^[[:space:]]*$|^#' "/usr/local/etc/sing-box/.deployment_config"; then
+    echo "[!] 部署配置格式异常，包含非法字符，停止加载" >&2
+    exit 1
+  fi
   # shellcheck source=/dev/null
   source "/usr/local/etc/sing-box/.deployment_config"
 fi
@@ -123,9 +128,8 @@ cidr_to_lpm_key() {
     # Split IP into 4 octets to avoid word splitting
     IFS=. read -r o1 o2 o3 o4 <<< "$ip"
     # 4-byte prefixlen(LE) + 4-byte IP(BE) = 8 parameters total
-    printf '%d %d %d %d %d %d %d %d' \
-        $((prefix & 0xff)) $(( (prefix >> 8) & 0xff)) 0 0 \
-        "$o1" "$o2" "$o3" "$o4"
+    printf 'hex %02x 00 00 00 %02x %02x %02x %02x' \
+        "$prefix" "$o1" "$o2" "$o3" "$o4"
 }
 
 # ── 降级路径（内核不支持时保留）────────────────────────────────────────────

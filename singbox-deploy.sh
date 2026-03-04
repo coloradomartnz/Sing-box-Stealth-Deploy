@@ -48,7 +48,8 @@ source "$PROJECT_DIR/cmd/check.sh"
 source "$PROJECT_DIR/cmd/uninstall.sh"
 source "$PROJECT_DIR/cmd/rollback.sh"
 
-# 3. 加载部署步骤
+# 3. 加载部署步骤与调度清单
+source "$PROJECT_DIR/lib/manifest.sh"
 source "$PROJECT_DIR/steps/01-prepare.sh"
 source "$PROJECT_DIR/steps/02-dirs-and-scripts.sh"
 source "$PROJECT_DIR/steps/03-subscribe.sh"
@@ -127,15 +128,15 @@ fi
 # 1. 基础环境校验 (P0)
 if [ "$(id -u)" -ne 0 ]; then
 	log_error "请使用 root 权限运行: sudo $0"
-	exit 1
+	exit "${E_PERMISSION:-13}"
 fi
 
-detect_os || { log_error "不支持的操作系统"; exit 1; }
-check_network || { log_error "网络连通性检查失败"; exit 1; }
-install_missing_tools || { log_error "必需工具安装失败"; exit 1; }
+detect_os || { log_error "不支持的操作系统"; exit "${E_GENERAL:-1}"; }
+check_network || { log_error "网络连通性检查失败"; exit "${E_NETWORK:-10}"; }
+install_missing_tools || { log_error "必需工具安装失败"; exit "${E_DEPENDENCY:-14}"; }
 
 # 2. 获取部署锁
-acquire_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID" 300 || exit 1
+acquire_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID" 300 || exit "${E_LOCK:-12}"
 
 # 3. 信息收集 (仅在非升级模式)
 
@@ -164,7 +165,7 @@ collect_subscription_urls() {
 		set -o history 2>/dev/null || true
 		if [ ${#AIRPORT_URLS[@]} -eq 0 ]; then
 			log_error "必须提供至少一个订阅链接"
-			exit 1
+			exit "${E_CONFIG:-11}"
 		fi
 		
 		# NextDNS
@@ -173,7 +174,7 @@ collect_subscription_urls() {
 		# 自动模式下尝试从环境变量读取
 		if [ -z "${AIRPORT_URLS_STR:-}" ] && [ ${#AIRPORT_URLS[@]} -eq 0 ]; then
 			log_error "自动模式下必须预设 AIRPORT_URLS_STR 环境变量"
-			exit 1
+			exit "${E_CONFIG:-11}"
 		fi
 		# 如果提供了字符串形式，解析成数组
 		if [ -n "${AIRPORT_URLS_STR:-}" ]; then
@@ -246,7 +247,7 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 		fi
 	fi
 	
-	# 持久化配置
+	# 持久化配置 (剔除敏感信息，详见 5.3 重构)
 	mkdir -p /usr/local/etc/sing-box
 	cat >"$DEPLOYMENT_CONFIG" <<EOF
 MAIN_IFACE="$MAIN_IFACE"
@@ -259,10 +260,12 @@ AIRPORT_TAGS="${AIRPORT_TAGS[*]}"
 AIRPORT_URLS_STR="${AIRPORT_URLS[*]}"
 NEXTDNS_ID="$NEXTDNS_ID"
 DASHBOARD_PORT="$DASHBOARD_PORT"
-DASHBOARD_SECRET="$DASHBOARD_SECRET"
 ENABLE_DASHBOARD="$ENABLE_DASHBOARD"
 IS_DESKTOP="$IS_DESKTOP"
 EOF
+	
+	# 增强安全：避免敏感配置泄露
+	chmod 600 "$DEPLOYMENT_CONFIG"
 	
 	# Stealth+ 住宅 IP 信息收集 (可选)
 	if [ "$AUTO_YES" -eq 0 ]; then
@@ -276,28 +279,46 @@ EOF
 			{
 				echo "RES_HOST=\"$RES_HOST\""
 				echo "RES_PORT=\"$RES_PORT\""
-				echo "RES_USER=\"$RES_USER\""
-				echo "RES_PASS=\"$RES_PASS\""
 			} >> "$DEPLOYMENT_CONFIG"
 		fi
 	fi
 else
 	log_info "[升级模式] 加载现有配置..."
 	if [ -f "$DEPLOYMENT_CONFIG" ]; then
-		# H-4 安全加固: 验证配置文件格式，防止代码注入
-		# C-3 安全修复: 收紧正则，禁止反引号、$()、${}等 shell 扩展字符
-		if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=%+\[\]-]*"$|^[[:space:]]*$|^#' "$DEPLOYMENT_CONFIG"; then
-			log_error "部署配置文件格式异常（包含非法行），可能被篡改: $DEPLOYMENT_CONFIG"
-			log_error "仅允许 KEY=\"VALUE\" 格式。请检查并修复后重试"
-			exit 1
+		_safe_source_deployment_config "$DEPLOYMENT_CONFIG"
+
+		# O-Secure 5.3: 平滑升级迁移，若旧配置仍有敏感信息，则转移并在配置中抹除
+		local cred_dir="/usr/local/etc/sing-box/.credentials"
+		_run mkdir -p "$cred_dir"
+		_run chmod 700 "$cred_dir"
+		local do_scrub=0
+		if [ -n "${DASHBOARD_SECRET:-}" ]; then
+			echo -n "$DASHBOARD_SECRET" > "$cred_dir/dash_secret"
+			do_scrub=1
+		elif [ -f "$cred_dir/dash_secret" ]; then
+			DASHBOARD_SECRET=$(cat "$cred_dir/dash_secret")
 		fi
-		# shellcheck source=/dev/null
-		source "$DEPLOYMENT_CONFIG"
+		
+		if [ -n "${RES_PASS:-}" ] || grep -q "RES_PASS" "$DEPLOYMENT_CONFIG"; then
+			echo -n "${RES_PASS:-}" > "$cred_dir/res_pass"
+			echo -n "${RES_USER:-}" > "$cred_dir/res_user"
+			do_scrub=1
+		else
+			[ -f "$cred_dir/res_pass" ] && RES_PASS=$(cat "$cred_dir/res_pass")
+			[ -f "$cred_dir/res_user" ] && RES_USER=$(cat "$cred_dir/res_user")
+		fi
+		_run chmod 600 "$cred_dir"/* 2>/dev/null || true
+
+		if [ $do_scrub -eq 1 ]; then
+			log_info "执行旧配置脱敏清理拉取..."
+			sed -i '/DASHBOARD_SECRET=/d; /RES_PASS=/d; /RES_USER=/d' "$DEPLOYMENT_CONFIG"
+		fi
+
 		# O-16: 使用 lib/utils.sh 中的集中管理函数
 		_ensure_compat_defaults
 	else
 		log_error "未找到部署配置，请先执行完整安装"
-		exit 1
+		exit "${E_CONFIG:-11}"
 	fi
 
 	# [自动容错恢复] 升级模式下，如果检测到 providers.json 为空，主动要求输入订阅
@@ -308,15 +329,8 @@ else
 	fi
 fi
 
-# 4. 执行部署步骤 (在子 Shell 中运行，隔离作用域)
-( deploy_step_01 )
-( deploy_step_02 )
-( deploy_step_03 )
-( deploy_step_04 )
-( deploy_step_05 )
-( deploy_step_06 )
-( deploy_step_07 )
-( deploy_step_08 )
+# 4. 执行部署步骤 (依据 lib/manifest.sh 中的定义和依赖排序自动调度)
+execute_all_steps
 
 # C-4 修复: 移除错误缩进
 log_info "🎉 部署完成！"

@@ -3,14 +3,14 @@
 # sing-box Stealth+ Residential Proxy Watchdog
 #
 
-# 配置信息（由部署脚本根据模板填充）
+# 凭据配置（由 Systemd LoadCredential 安全注入）
 RES_HOST="${RES_HOST}"
 RES_PORT="${RES_PORT}"
-RES_USER="${RES_USER}"
-RES_PASS="${RES_PASS}"
+RES_USER=$(cat "$CREDENTIALS_DIRECTORY/res_user" 2>/dev/null || echo "")
+RES_PASS=$(cat "$CREDENTIALS_DIRECTORY/res_pass" 2>/dev/null || echo "")
 
 CLASH_API="http://127.0.0.1:${DASHBOARD_PORT}"
-CLASH_SECRET="${DASHBOARD_SECRET}"
+CLASH_SECRET=$(cat "$CREDENTIALS_DIRECTORY/dash_secret" 2>/dev/null || echo "sing-box")
 SELECTOR_TAG="🤖 AI专用-精准分流"
 RES_OUTBOUND="🏠 住宅代理-中转出口"
 FALLBACK_OUTBOUND="🚀 节点选择"

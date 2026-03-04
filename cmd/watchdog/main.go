@@ -6,6 +6,8 @@ import (
 	"math/rand/v2"
 	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -67,37 +69,59 @@ func main() {
 	// Go 1.20+ manually seeding is deprecated for global rand.
 	// We switched to math/rand/v2 which handles this automatically.
 
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	slog.Info("Watchdog 2.0 Go Sidecar Started", "interval", cfg.CheckInterval, "threshold", cfg.CBThreshold)
 
 	for {
 		if cb.State() == StateOpen {
 			slog.Warn("circuit breaker OPEN, skipping proactive check", "wait", cfg.CBResetTimeout)
-			time.Sleep(cfg.CBResetTimeout)
+			select {
+			case <-ctx.Done():
+				slog.Info("Received shutdown signal, exiting gracefully")
+				return
+			case <-time.After(cfg.CBResetTimeout):
+			}
 			continue
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		err := checker.Check(ctx)
-		cancel()
+		checkCtx, checkCancel := context.WithTimeout(ctx, 15*time.Second)
+		err := checker.Check(checkCtx)
+		checkCancel()
 
 		if err != nil {
+			if ctx.Err() != nil {
+				slog.Info("Received shutdown signal during check, exiting gracefully")
+				return
+			}
 			cb.RecordFailure()
 			slog.Error("health check failed", "err", err, "consecutive_failures", cb.Failures())
 
 			if cb.State() == StateOpen {
 				slog.Warn("Circuit Breaker Tripped! Triggering node fallback...")
-				switchToFallback()
+				switchToFallback(ctx)
 			}
 
 			backoff := calculateBackoffWithJitter(cb.Failures(), cfg)
 			slog.Info("Backing off before next check", "sleep", backoff)
-			time.Sleep(backoff)
+			select {
+			case <-ctx.Done():
+				slog.Info("Received shutdown signal, exiting gracefully")
+				return
+			case <-time.After(backoff):
+			}
 		} else {
 			if cb.Failures() > 0 {
 				slog.Info("Health check recovered. Resetting circuit breaker.")
 			}
 			cb.RecordSuccess()
-			time.Sleep(cfg.CheckInterval)
+			select {
+			case <-ctx.Done():
+				slog.Info("Received shutdown signal, exiting gracefully")
+				return
+			case <-time.After(cfg.CheckInterval):
+			}
 		}
 	}
 }
@@ -119,16 +143,21 @@ func calculateBackoffWithJitter(failures int, cfg Config) time.Duration {
 	return base + jitter
 }
 
-func switchToFallback() {
+func switchToFallback(ctx context.Context) {
 	// Call sing-box external control API: PUT /proxies/{group}
 	secret := os.Getenv("DASHBOARD_SECRET")
 	if secret == "" {
 		slog.Warn("DASHBOARD_SECRET environment variable is empty. API call may fail.")
 	}
 
-	cmd := exec.Command("curl", "-sf", "-X", "PUT",
+	port := os.Getenv("DASHBOARD_PORT")
+	if port == "" {
+		port = "9090" // default
+	}
+
+	cmd := exec.CommandContext(ctx, "curl", "-sf", "-X", "PUT",
 		"-H", "Authorization: Bearer "+secret,
-		"http://127.0.0.1:9090/proxies/auto-select",
+		"http://127.0.0.1:"+port+"/proxies/auto-select",
 		"-d", `{"name":"fallback-node"}`)
 
 	if err := cmd.Run(); err != nil {

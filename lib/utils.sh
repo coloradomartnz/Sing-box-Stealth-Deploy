@@ -17,6 +17,16 @@ else
 	RED='' GREEN='' YELLOW='' BLUE='' NC=''
 fi
 
+# ============================================================================
+# 标准退出码定义 (Standard Exit Codes)
+# ============================================================================
+export E_GENERAL=1
+export E_NETWORK=10
+export E_CONFIG=11
+export E_LOCK=12
+export E_PERMISSION=13
+export E_DEPENDENCY=14
+
 _redact() {
 	# 增强脱敏：URL、IP、token、密钥
 	sed -E \
@@ -35,6 +45,16 @@ _on_err() {
 	echo -e "${RED}[ERROR]${NC} 步骤: ${CURRENT_STEP:-init}"
 	echo -e "${RED}[ERROR]${NC} 行号: ${line}, 退出码: ${rc}"
 	echo -e "${RED}[ERROR]${NC} 命令: ${cmd_safe}"
+
+	# Trouble-shooting advice based on standardized exit codes
+	case "$rc" in
+		"$E_NETWORK")    echo -e "${YELLOW}[排障指引] 检测到网络连接失败。请检查系统 DNS 或所在地区是否阻断了相关域名。${NC}" ;;
+		"$E_CONFIG")     echo -e "${YELLOW}[排障指引] 配置文件格式、参数或依赖缺失。请检查 jq 输出及输入载荷是否符合规范。${NC}" ;;
+		"$E_LOCK")       echo -e "${YELLOW}[排障指引] 获取文件锁失败或超时。如果有僵死进程，请尝试手动清理锁文件。${NC}" ;;
+		"$E_PERMISSION") echo -e "${YELLOW}[排障指引] 权限不足。部署脚本及其调用的命令需要 root 权限，请确保以 sudo 运行，并检查文件读写权限。${NC}" ;;
+		"$E_DEPENDENCY") echo -e "${YELLOW}[排障指引] 缺少关键系统依赖 (如 curl, jq, iptables 等)。请检查前置环境准备是否成功执行。${NC}" ;;
+		*)               echo -e "${YELLOW}[排障指引] 发生了未知错误。请结合上面的命令和如下的系统日志进行排查。${NC}" ;;
+	esac
 
 	# 如果 sing-box 已经装了/有 unit，顺手吐一点日志帮助定位
 	if command -v systemctl >/dev/null 2>&1; then
@@ -191,6 +211,18 @@ _sed_escape_replacement() {
 	printf '%s' "$1" | sed -e 's/[&\/|]/\\&/g'
 }
 
+_safe_source_deployment_config() {
+	local cfg="$1"
+	[ -f "$cfg" ] || { log_error "配置文件不存在: $cfg"; return 1; }
+	# 收紧正则，禁止反引号、$()、${} 等 shell 扩展
+	if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=%+\[\]-]*"$|^[[:space:]]*$|^#' "$cfg"; then
+		log_error "配置文件格式异常，包含禁止的 shell 元字符: $cfg"
+		return 1
+	fi
+	# shellcheck source=/dev/null
+	source "$cfg"
+}
+
 _atomic_write() {
 	local target="$1"
 	local content
@@ -223,7 +255,7 @@ _atomic_write() {
 	# H-5 修复: 使用 %s 不带 \n，避免对 JSON 等内容添加多余尾部换行
 	if printf '%s' "$content" > "$tmp"; then
 		# C-3 修复: 确保数据落盘后再原子替换
-		sync "$tmp" 2>/dev/null || sync
+		python3 -c "import os; fd=os.open('$tmp',os.O_RDONLY); os.fsync(fd); os.close(fd)" 2>/dev/null || true
 		if ! mv "$tmp" "$target"; then
 			rm -f "$tmp"
 			log_error "原子替换写入失败: $target"

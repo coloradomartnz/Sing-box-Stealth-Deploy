@@ -58,11 +58,11 @@
 
   # 5. cgroup v2 路径访问（支持 eBPF TC cgroup 分流读取自身 cgroup 路径）
   /sys/fs/cgroup/unified/**                          r,
-  /sys/fs/cgroup/system.slice/sing-box.service/**   rw,
+  /sys/fs/cgroup/system.slice/sing-box.service/**    r,
 
   # 6. 允许读取 BPF 对象文件（TC hook 挂载时需要 open）
   /usr/local/share/sing-box/*.bpf.o                 r,
 
   # 7. bpftool / BPF 文件系统（eBPF Map pin 路径）
-  /sys/fs/bpf/**                                    rw,
+  /sys/fs/bpf/**                                     r,
 }

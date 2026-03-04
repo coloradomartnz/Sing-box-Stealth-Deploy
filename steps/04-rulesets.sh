@@ -52,7 +52,7 @@ deploy_step_04() {
 
 	if [ "$download_fail" -eq 1 ]; then
 		log_error "一个或多个规则集下载失败。详细日志已输出到上方"
-		exit 1
+		exit "${E_NETWORK:-10}"
 	fi
 
 	log_info "规则集准备完成 ✓"

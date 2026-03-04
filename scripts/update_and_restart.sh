@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "[!] 请用 root 运行：sudo $0"
-  exit 1
+  exit "${E_PERMISSION:-13}"
 fi
 
 # 1. 加载核心库与变量
@@ -31,7 +31,7 @@ PY="${SB_SUB}/venv/bin/python"
 
 # 2. 获取锁
 # 使用与部署相同的锁，避免冲突
-acquire_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID" 60 || exit 1
+acquire_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID" 60 || exit "${E_LOCK:-12}"
 trap 'cleanup_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID"; cleanup' EXIT INT TERM
 
 # validate_sing_box_config 已在 lib/utils.sh 中定义
@@ -69,7 +69,7 @@ if [ -d "$SB_SUB" ]; then
 	if ! "$PY" main.py; then
 		_rollback_logic "订阅更新失败"
 		popd >/dev/null
-		exit 1
+		exit "${E_CONFIG:-11}"
 	fi
 	popd >/dev/null
 else
@@ -80,7 +80,7 @@ echo "[*] 4) 执行地区自动分组..."
 if [ -f "/usr/local/bin/singbox_build_region_groups.py" ]; then
 	if ! python3 /usr/local/bin/singbox_build_region_groups.py "$CONFIG"; then
 		_rollback_logic "地区分组失败"
-		exit 1
+		exit "${E_CONFIG:-11}"
 	fi
 else
 	log_warn "未找到地区分组脚本，跳过"
@@ -89,7 +89,7 @@ fi
 echo "[*] 5) 最终配置门禁..."
 if ! validate_sing_box_config "$CONFIG"; then
 	_rollback_logic "生成的配置无效"
-	exit 1
+	exit "${E_CONFIG:-11}"
 fi
 
 echo "[*] 6) 重启服务..."
@@ -101,7 +101,7 @@ if ! systemctl restart sing-box; then
 	_rollback_logic "服务重启失败"
 	systemctl restart sing-box || true
 	log_error "请立刻查看日志排错：journalctl -u sing-box -n 200 --no-pager"
-	exit 1
+	exit "${E_GENERAL:-1}"
 fi
 
 echo "[*] 7) 验证服务健康状态..."
@@ -113,7 +113,7 @@ if systemctl is-active --quiet sing-box && ip link show singbox_tun >/dev/null 2
 else
 	log_error "❌ 服务启动异常，请检查日志"
 	journalctl -u sing-box -n 50 --no-pager
-	exit 1
+	exit "${E_GENERAL:-1}"
 fi
 
 echo ""

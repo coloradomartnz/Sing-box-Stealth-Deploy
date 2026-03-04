@@ -161,8 +161,7 @@ do_check() {
 	# 9. Dashboard 检查
 	echo "[10/10] 面板 (Dashboard) 启动检查..."
 	if [ -f "$deploy_cfg" ]; then
-		# shellcheck disable=SC1090
-		source "$deploy_cfg"
+		_safe_source_deployment_config "$deploy_cfg"
 		if [ "${ENABLE_DASHBOARD:-0}" -eq 1 ]; then
 			local ui_dir="/usr/local/etc/sing-box/ui"
 			local d_port="${DASHBOARD_PORT:-9090}"

@@ -29,12 +29,19 @@ deploy_step_02() {
 		"scripts/singbox_build_region_groups.py:/usr/local/bin/singbox_build_region_groups.py"
 		"scripts/update_and_restart.sh:/usr/local/etc/sing-box/update_and_restart.sh"
 		"scripts/backup.sh:/usr/local/etc/sing-box/backup.sh"
+		"templates/sing-box-config-gen.sh:/usr/local/libexec/sing-box-config-gen.sh"
 		"lib/globals.sh:/usr/local/etc/sing-box/lib/globals.sh"
 		"lib/utils.sh:/usr/local/etc/sing-box/lib/utils.sh"
 		"lib/checks.sh:/usr/local/etc/sing-box/lib/checks.sh"
 		"lib/lock.sh:/usr/local/etc/sing-box/lib/lock.sh"
 		"lib/ruleset.sh:/usr/local/etc/sing-box/lib/ruleset.sh"
 	)
+
+	# 创建安全凭据目录
+	local cred_dir="/usr/local/etc/sing-box/.credentials"
+	_run mkdir -p "$cred_dir"
+	_run chown root:root "$cred_dir"
+	_run chmod 700 "$cred_dir"
 
 	for pair in "${target_scripts[@]}"; do
 		local src="${pair%%:*}"

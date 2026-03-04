@@ -1,108 +1,121 @@
-# 🚀 Sing-box Stealth Deploy
+# Sing-box Deployment Tool
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Bash](https://img.shields.io/badge/Language-Bash-4EAA25.svg?logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
 [![Systemd](https://img.shields.io/badge/Integration-Systemd-black.svg?logo=linux&logoColor=white)](https://systemd.io/)
 
-**Sing-box Stealth Deploy** 是一款高度优化、模块化构架且极其稳定的 [sing-box](https://sing-box.sagernet.org/) 透明代理自动部署解决方案。本专案生而为追求**极致性能**、**系统洁癖**与**安全隔离**的 Linux 高级用户量身定制。只需一行代码，即可接管全局网络，让流媒体解锁和分流变得前所未有的简单。
+Sing-box Deployment Tool 是一个面向 Linux 环境的 bash 脚本集，用于自动化部署和配置 [sing-box](https://sing-box.sagernet.org/) 透明代理。它结合了 eBPF 技术、系统服务集成与安全机制，为高级用户提供一套模块化、易维护的代理网络接管方案。
 
 ---
 
-## ✨ 核心特性
+## 核心特性
 
-- 🧱 **完全模块化设计**：将复杂的部署过程拆分为 7 个清晰的步骤，易于审计、维护与自定义。
-- ⚡ **并行加速**：Rulesets (规则集) 采用后台并行下载逻辑，显著缩短部署时间。
-- 🛠️ **鲁棒性增强**：内部集成软错误处理 (Soft Failure)，即使面板下载失败，代理核心依然能稳定上线。
-- 📊 **本地化面板**：自动部署 MetacubexD 本地面板，支持实时节点切换与流量监控。
-- 🛡️ **安全加固**：原生集成 AppArmor 安全策略，提供进程级隔离。
-- 🌍 **全协议支持**：支持 VLESS, VMess (WS), Trojan, Hysteria2, Tuic, NaiveProxy, Wireguard, Socks5 等协议。
-- ⚡ **分流管理**：集成智能 DNS 分流 (Split-DNS) 与路由规则，自动识别国内外流量，支持 SNI 嗅探。
-- 📺 **流媒体解锁**：脚本自动按地区 (HK/JP/US/SG等) 生成分组，配合 `urltest` 自动选择最优节点，助力解锁流媒体。
-- 🌐 **双栈优化**：支持原生 IPv6 路径优化，提供端到端的 IPv6 透明代理能力。
-- 🔍 **深度自检**：提供 `--check` 命令，对环境、配置、端口、连通性进行全方位健康扫描。
-- 🧹 **无痕卸载**：支持深度卸载，能够彻底清理所有残留文件、系统配置与用户账号。
+- **模块化构建流程**：将部署分为环境准备、目录配置、订阅构建、规则更新、面板安装、配置渲染与系统集成等七个步骤，提升可维护性。
+- **eBPF 流量接管**：集成 TC BPF (Traffic Control BPF)，挂载到网卡 ingress 路径上，实现将容器或主机流量直接导向内核 TUN 接口，绕过冗长的 iptables 链。
+- **节点自动分组与流媒体解锁**：基于 Python 脚本自动识别订阅节点名称中的区域标签（支持 Emoji 旗帜或国家代码），生成对应地区的 `urltest` 自动测速出站，便于进行流媒体分流。
+- **自定义分流策略**：支持通过 `direct_list.txt` 和 `proxy_list.txt` 基于文件导入域名，并使用 jq 自动转化为匹配的路由与 DNS 规则。
+- **本地控制面板**：自动部署 MetacubexD 本地静态 UI，支持切换策略组与查看连接状态。
+- **双栈及网络优化**：自动探测网络 MTU 并计算 TUN 设备的最佳 MTU 值；支持原生 IPv6 环境自适应配置。
+- **Stealth+ 住宅 IP 扩展**：提供针对 AI 及流媒体等场景的可选扩展方案，支持将流量分发到自备的住宅代理（Residential Proxy），并配备 Watchdog 服务实现故障时向常规节点的自动回退。
+- **系统层安全控制**：内置基于 AppArmor 的权限隔离配置，限制进程权限以保障宿主机安全。
+- **生命周期管理**：提供健康检查 (`--check`)，配置回滚 (`--rollback`) 以及完整干净卸载 (`--uninstall`) 的运维命令。
 
 ---
 
-## 🛠️ 部署步骤 (1-7)
+## 目录结构说明
 
-脚本按照严密的逻辑顺序执行：
-1. **安装环境**：配置官方源并安装最新的 sing-box。
-2. **结构部署**：配置持久化目录与辅助管理脚本。
-3. **订阅构建**：集成 `sing-box-subscribe` 实现灵活的节点转换。
-4. **规则预下载**：并行获取最新的路由过滤规则。
-5. **面板安装**：自动化部署 MetacubexD UI。
-6. **配置生成**：利用原子写入 (`_atomic_write`) 生成高可用配置文件。
-7. **系统集成**：整合 Systemd、NetworkManager 及 AppArmor。
+- `singbox-deploy.sh`: 主部署入口脚本。
+- `steps/`: 具体各个部署阶段的分步脚本。
+- `cmd/`: 命令行子命令（检查、卸载、回滚等）。
+- `lib/`: 通用的 bash 工具函数库（检查、锁管理、输出日志等）。
+- `scripts/`: 提供如配置生成、DNS 故障转移监控、区域分组 (`singbox_build_region_groups.py`) 等后台运行工具。
+- `ebpf/`: 包含 C 语言编写的内核态 BPF 源码 (`tproxy_tc.bpf.c`)。
+- `templates/`: 提供 systemd 服务单元、AppArmor 配置文件以及 sing-box `config.json` 的渲染模板。
+- `tests/`: 包含脚本集的完整单元测试与集成测试环境（虚拟机、Docker 环境跑测）。
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
-### 1. 克隆/准备脚本并赋予执行权限
+### 1. 准备执行环境
+
+克隆仓库后，确保所有相关脚本具备可执行权限：
+
 ```bash
-# 赋予主脚本及辅助模块执行权限
 chmod +x singbox-deploy.sh cmd/*.sh steps/*.sh scripts/*.sh
 ```
 
-### 2. 一键安装
+### 2. 标准交互式安装
+
+在具有 root 权限下运行部署脚本，过程中按提示输入节点订阅地址及可选参数：
+
 ```bash
 sudo ./singbox-deploy.sh
 ```
 
-### 3. 自动化模式 (无需交互)
+### 3. 非交互式自动安装
+
+可通过环境变量注入参数，适用于无头服务器初始化的自动化配置：
+
 ```bash
-sudo AUTO_YES=1 AIRPORT_URLS_STR="YOUR_URL" ./singbox-deploy.sh
+sudo AUTO_YES=1 AIRPORT_URLS_STR="https://example.com/sub?name=MySub" ./singbox-deploy.sh
 ```
 
-### 4. 健康状态检查与自检进程 (Health Check)
+### 4. 状态检查与诊断
+
+部署完成后，可以使用如下命令诊断服务健康状况（包括 eBPF 挂载、服务状态、连接测试）：
+
 ```bash
 sudo ./singbox-deploy.sh --check
 ```
 
-### 5. 安全回滚 (Safe Rollback)
-如果部署或升级后发现网络异常，脚本会自动创建双击备份。您可以随时回滚：
+### 5. 服务回滚
+
+若升级或修改后出现问题，你可以回滚到自动生成的可用旧版本配置：
+
 ```bash
 sudo ./singbox-deploy.sh --rollback
 ```
-系统会列出最近的备份点，输入对应编号即可一键恢复原状。
 
 ---
 
-## 🧪 测试与质量保证 (Testing)
+## 自定义路由与分流
 
-本项目集成了一套完整的测试套件，涵盖了组件依赖、配置容错、原子锁机制及权限隔离等多个维度。如果您对代码库进行了修改，请务必运行测试以确保没有任何破坏性更改：
+脚本会在部署目录 `/usr/local/etc/sing-box/` 建立两个控制列表：
+
+1. **直连域名放行**：编辑 `direct_list.txt`，将不需要走代理的域名加入其中。
+2. **强制代理名单**：编辑 `proxy_list.txt`，确保特定域名固定经由代理访问。
+
+配置修改后运行以使其生效：
+```bash
+sudo ./singbox-deploy.sh --upgrade
+```
+
+---
+
+## 环境要求
+
+- **操作系统**: 推荐使用较新内核的发行版，如 Ubuntu 22.04+ (24.04 尤佳) 或 Debian 11+，以确保 eBPF 及 systemd 获得最佳支持。
+- **运行权限**: 必须具有 `root` 或 `sudo` 权限。
+- **依赖软件包**: `curl`, `jq`, `git`, `python3-venv`, `clang`, `llvm` (编译 eBPF 需要)。脚本在执行期间会自动尝试补充未安装的核心依赖。
+
+---
+
+## 测试与质量保障
+
+如需参与开发修改代码，提交前可以通过内建的测试套件以验证修改不会带来语法错误或回归问题：
 
 ```bash
-# 运行完整的集成测试与语法验证
+# 执行脚本语法检查
+bash -n singbox-deploy.sh steps/*.sh lib/*.sh
+
+# 执行单元及集成测试
 bash tests/test_fixes.sh
 ```
 
 ---
 
-## 🛠️ 自定义分流 (Custom Routing)
+## 许可证
 
-脚本支持通过简单的列表文件轻松自定义路由规则：
+本项目基于 [MIT License](LICENSE) 发布。
 
-1. **强制直连**：编辑 `/usr/local/etc/sing-box/direct_list.txt`，每行输入一个域名（如 `baidu.com`）。
-2. **强制代理**：编辑 `/usr/local/etc/sing-box/proxy_list.txt`，每行输入一个域名（如 `openai.com`）。
-3. **生效方式**：编辑完成后，运行 `sudo ./singbox-deploy.sh --upgrade` 即可自动重新生成并应用配置，脚本会自动读取这些列表，并将它们精准注入到 sing-box 的路由逻辑和 DNS 解析规则中，确保该域名下的所有页面和二级域名内容都遵循您的设置。
-
----
-
-## ⚙️ 环境要求
-- **操作系统**: Ubuntu 22.04+ (推荐 24.04), Debian 11+
-- **权限**: Root 权限
-- **依赖**: curl, jq, git, python3-venv
-
----
-
-## 🤝 贡献
-欢迎提交 Issue 或 Pull Request 来完善这个项目。在提交代码前，请确保脚本通过语法校验：
-```bash
-bash -n singbox-deploy.sh steps/*.sh lib/*.sh
-```
-
----
-
-## 📄 开源协议
-本项目采用 [MIT License](LICENSE) 许可。

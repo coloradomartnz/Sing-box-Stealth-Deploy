@@ -6,6 +6,28 @@ sing-box 地区自动分组脚本
 import json, os, sys, fcntl, time, re
 from collections import defaultdict
 
+# 地区名称到国家代码的映射，提取为全局常量，避免每次循环重复初始化
+NAME_CC_MAP = {
+    "香港": "hk", "hk": "hk", "hongkong": "hk", "hong kong": "hk",
+    "台湾": "tw", "tw": "tw", "taiwan": "tw", 
+    "日本": "jp", "jp": "jp", "japan": "jp",
+    "狮城": "sg", "sg": "sg", "singapore": "sg", "新加坡": "sg",
+    "美国": "us", "us": "us", "america": "us", "united states": "us",
+    "韩国": "kr", "kr": "kr", "korea": "kr",
+    "英国": "gb", "uk": "gb", "gb": "gb",
+    "德国": "de", "de": "de", "germany": "de",
+    "法国": "fr", "fr": "fr", "france": "fr",
+    "土耳其": "tr", "tr": "tr", "turkey": "tr",
+    "印度": "in", "in": "in", "india": "in",
+    "澳洲": "au", "澳大利亚": "au", "au": "au", "australia": "au",
+    "阿根廷": "ar", "ar": "ar", "argentina": "ar",
+    "荷兰": "nl", "nl": "nl", "netherlands": "nl",
+    "俄罗斯": "ru", "ru": "ru", "russia": "ru",
+    "印尼": "id", "id": "id", "indonesia": "id",
+    "巴西": "br", "br": "br", "brazil": "br",
+    "加拿大": "ca", "加拿": "ca", "ca": "ca", "canada": "ca"
+}
+
 def acquire_lock(lockfile, timeout=300):
     """
     原子化获取文件锁（带僵尸锁检测）
@@ -115,7 +137,9 @@ def _run_logic():
                 with open(deploy_cfg) as dc:
                     for line in dc:
                         if line.startswith("DEFAULT_REGION="):
-                            DEFAULT_REGION = line.strip().split("=", 1)[1].lower()
+                            # 更健壮的解析，去首尾空白然后去除单双引号
+                            val = line.strip().split("=", 1)[1].strip()
+                            DEFAULT_REGION = val.strip('\'"').lower()
                             break
             except (IOError, OSError, ValueError):
                 pass
@@ -152,29 +176,8 @@ def _run_logic():
 
     def flag_to_cc(s):
         # 尝试通过名字直接匹配
-        name_cc_map = {
-            "香港": "hk", "hk": "hk", "hongkong": "hk", "hong kong": "hk",
-            "台湾": "tw", "tw": "tw", "taiwan": "tw", 
-            "日本": "jp", "jp": "jp", "japan": "jp",
-            "狮城": "sg", "sg": "sg", "singapore": "sg", "新加坡": "sg",
-            "美国": "us", "us": "us", "america": "us", "united states": "us",
-            "韩国": "kr", "kr": "kr", "korea": "kr",
-            "英国": "gb", "uk": "gb", "gb": "gb",
-            "德国": "de", "de": "de", "germany": "de",
-            "法国": "fr", "fr": "fr", "france": "fr",
-            "土耳其": "tr", "tr": "tr", "turkey": "tr",
-            "印度": "in", "in": "in", "india": "in",
-            "澳洲": "au", "澳大利亚": "au", "au": "au", "australia": "au",
-            "阿根廷": "ar", "ar": "ar", "argentina": "ar",
-            "荷兰": "nl", "nl": "nl", "netherlands": "nl",
-            "俄罗斯": "ru", "ru": "ru", "russia": "ru",
-            "印尼": "id", "id": "id", "indonesia": "id",
-            "巴西": "br", "br": "br", "brazil": "br",
-            "加拿大": "ca", "加拿": "ca", "ca": "ca", "canada": "ca"
-        }
-        
         lower_s = s.lower()
-        for key, cc in name_cc_map.items():
+        for key, cc in NAME_CC_MAP.items():
             if key in lower_s:
                 return cc
                 
