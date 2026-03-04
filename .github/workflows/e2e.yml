@@ -50,9 +50,8 @@ jobs:
       - name: Install virtme-ng and QEMU
         run: |
           sudo apt-get update
-          # iproute2 is required as VM ip/tuntap commands come from host rootfs
+          # linux-image-generic provides the vmlinuz used by virtme (NOT the running azure kernel)
           sudo apt-get install -y qemu-system-x86 linux-image-generic iproute2
-          # Break system packages via PEP-668 bypass for virtme
           sudo pip3 install virtme-ng --break-system-packages
 
       - name: Create E2E test script
@@ -77,11 +76,29 @@ jobs:
 
       - name: Run in virtme VM
         run: |
-          # Use sudo to access protected kernel images on Azure runners
+          # ── Why these flags ──────────────────────────────────────────────────
+          # 1. --installed-kernel is DEPRECATED. Use --kimg with an explicit path.
+          #    The running kernel is 6.x-azure; linux-image-generic installs a
+          #    separate generic vmlinuz. We find its path dynamically.
+          # 2. --pwd  mounts the GitHub Actions workspace inside the VM at the
+          #    same absolute path so the script can be located.
+          # 3. We pass the ABSOLUTE path to --script-sh.  virtme wraps it with
+          #    `sh <path>` inside the VM; a relative path fails because the VM
+          #    may start in a different working directory.
+          # ─────────────────────────────────────────────────────────────────────
+
+          # Locate the generic kernel image installed above (not the azure one)
+          KIMG=$(ls /boot/vmlinuz-*-generic 2>/dev/null | sort -V | tail -1)
+          if [ -z "$KIMG" ]; then
+            KIMG=$(ls /boot/vmlinuz-* 2>/dev/null | sort -V | tail -1)
+          fi
+          echo "Using kernel image: $KIMG"
+
           sudo virtme-run \
-            --installed-kernel \
+            --kimg "$KIMG" \
             --mods auto \
-            --script-sh tests/e2e_vm_test.sh \
+            --pwd \
+            --script-sh "$(pwd)/tests/e2e_vm_test.sh" \
             --memory 512M \
             -a loglevel=3
 
