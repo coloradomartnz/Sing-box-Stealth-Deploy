@@ -121,8 +121,12 @@ deploy_step_06() {
 		  '{
 		     tun_address: ($tun_address | fromjson),
 		     dns_strategy: ($dns_strategy | fromjson),
-		     bootstrap_dns, remote_tag, dash_port,
-		     mtu: ($mtu | tonumber), lan_subnet, res_host,
+		     bootstrap_dns: $bootstrap_dns, 
+		     remote_tag: $remote_tag, 
+		     dash_port: $dash_port,
+		     mtu: ($mtu | tonumber), 
+		     lan_subnet: $lan_subnet, 
+		     res_host: $res_host,
 		     res_port: ($res_port | tonumber)
 		   }' > "$vars_json"
 
@@ -227,7 +231,7 @@ deploy_step_06() {
 		# 将 providers.json 链接/复制到 sing-box-subscribe 目录 (main.py 从 CWD 加载)
 		install -m 640 "$config_dir/providers.json" "$SB_SUB/providers.json"
 
-		if ! (cd "$SB_SUB" && "$py_bin" main.py --template_index=0); then
+		if ! (cd "$SB_SUB" && PYTHONWARNINGS="ignore" "$py_bin" main.py --template_index=0); then
 			log_error "订阅转换执行失败"
 			exit "${E_CONFIG:-11}"
 		fi
@@ -241,38 +245,37 @@ deploy_step_06() {
 			mv "$SB_SUB/config.json" "$config_dir/config.json"
 		fi
 
-		# ── DNS 修复: 移除 sing-box-subscribe 注入的非法 ":53" DNS 条目 ──
-		# sing-box 1.10+ 不接受 address 只有端口的写法，用 jq 清除后用我们的模板覆盖回去
-		log_info "修复 DNS 配置（移除非法 :53 条目）..."
-		local _fixed_config
-		_fixed_config=$(mktemp /tmp/singbox-dns-fix.XXXXXX)
-
-		jq '
-		  # 1. 删掉所有 address 字段值为 ":53" 的 dns.servers 条目
-		  .dns.servers |= map(select(.address != ":53")) |
-		  # 2. 如果 dns.servers 里没有 tag=="local" 的条目，补回我们模板里正确的那个
-		  if (.dns.servers | map(select(.tag == "local")) | length) == 0 then
-		    .dns.servers += [{
-		      "tag": "local",
-		      "type": "https",
-		      "server": "dns.alidns.com",
-		      "path": "/dns-query",
-		      "domain_resolver": "bootstrap"
-		    }]
-		  else . end
-		' "$config_dir/config.json" > "$_fixed_config" \
-		  && mv "$_fixed_config" "$config_dir/config.json" \
-		  || { log_warn "DNS 修复步骤失败，跳过"; rm -f "$_fixed_config"; }
-		# ── DNS 修复结束 ──
-	fi
-
 	# 4.4 地区自动分组
 	log_info "扫描地区并生成分组..."
 	if [ -f "/usr/local/bin/singbox_build_region_groups.py" ]; then
 		DEFAULT_REGION="${DEFAULT_REGION}" python3 /usr/local/bin/singbox_build_region_groups.py "$config_dir/config.json"
 	fi
 
-	# 4.5 配置校验
+	# 4.5 DNS 最终修复 (确保在所有后处理之后)
+	# ── DNS 修复: 移除任何注入的非法 ":53" DNS 条目 ──
+	# sing-box 1.10+ 不接受 address/server 只有端口的写法
+	log_info "执行 DNS 配置终极修复（清除所有非法 :53 条目）..."
+	local _fixed_config
+	_fixed_config=$(mktemp /tmp/singbox-dns-fix.XXXXXX)
+
+	jq '
+	  # 1. 彻底删掉所有 address 或 server 字段值为 ":53" 的 dns.servers 条目
+	  .dns.servers |= map(select(.address != ":53" and .server != ":53")) |
+	  # 2. 补回/修正 tag=="local" 的条目，确保它指向可靠的地址
+	  if (.dns.servers | map(select(.tag == "local")) | length) == 0 then
+	    .dns.servers = [{
+	      "tag": "local",
+	      "type": "https",
+	      "server": "dns.alidns.com",
+	      "path": "/dns-query",
+	      "domain_resolver": "bootstrap"
+	    }] + .dns.servers
+	  else . end
+	' "$config_dir/config.json" > "$_fixed_config" \
+	  && mv "$_fixed_config" "$config_dir/config.json" \
+	|| { log_warn "DNS 终极修复失败"; rm -f "$_fixed_config"; }
+
+	# 4.6 配置校验
 	log_info "配置最终校验..."
 	if ! validate_sing_box_config "$config_dir/config.json"; then
 		log_error "生成的配置校验不通过"
