@@ -19,7 +19,7 @@ deploy_step_01() {
 		if command -v sing-box &>/dev/null; then
 			local CURRENT_VERSION REINSTALL
 			CURRENT_VERSION=$(sing-box version 2>&1 | head -n1)
-			log_warn "sing-box 已安装：$CURRENT_VERSION"
+			log_warn "sing-box 已安裃：$CURRENT_VERSION"
 			# 如果是自动模式或 dry-run，跳过确认
 			if [ "${AUTO_YES:-0}" -eq 0 ] && [ "${DRY_RUN:-0}" -eq 0 ]; then
 				read -p "是否重新安装？[y/N]: " -n 1 -r REINSTALL
@@ -119,11 +119,17 @@ download_bpf_object() {
 	mkdir -p "$(dirname "$bpf_dest")"
 
 	# 从 GitHub Release 下载预编译对象，零编译依赖
+	# 修复: 用 || release_url="" 防止 set -eo pipefail 在 curl 限流/超时时直接杀死脚本
 	local release_url
-	release_url=$(curl -sf "https://api.github.com/repos/coloradomartnz/Sing-box-Stealth-Deploy/releases/latest" | jq -r '.assets[] | select(.name == "tproxy_tc.bpf.o") | .browser_download_url')
+	release_url=$(curl -sf \
+		--connect-timeout "${CONNECT_TIMEOUT:-5}" \
+		-m "${MAX_TIME:-10}" \
+		"https://api.github.com/repos/coloradomartnz/Sing-box-Stealth-Deploy/releases/latest" \
+		| jq -r '.assets[] | select(.name == "tproxy_tc.bpf.o") | .browser_download_url' \
+	) || release_url=""
 
 	if [ -z "$release_url" ]; then
-		log_warn "无法获取 BPF release 资产，回退到 ip rule 模式"
+		log_warn "无法获取 BPF release 资产（可能是 API 限流、网络超时或尚未发布二进制），回退到 ip rule 模式"
 		_set_ebpf_mode 0
 		return 0
 	fi
