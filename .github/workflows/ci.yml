@@ -20,28 +20,24 @@ jobs:
       - name: Install BPF toolchain (Clang + libbpf + bpftool)
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libelf-dev linux-headers-generic libbpf-dev
+          sudo apt-get install -y \
+            clang llvm libelf-dev linux-headers-generic libbpf-dev \
+            libcap-dev binutils-dev git
 
-          # ── Step 1: install versioned kernel tools for the running kernel ──
-          # On Azure runners the kernel is 6.x-azure; those packages exist but
-          # do NOT ship bpftool. We install them anyway (for other tools) and
-          # then UNCONDITIONALLY also install linux-tools-generic, which does
-          # ship bpftool (at /usr/lib/linux-tools/<generic-kver>/bpftool).
+          # Install kernel-versioned tools for the running kernel (perf, etc.).
+          # NOTE: On Ubuntu 24.04, linux-tools-* packages no longer include
+          # bpftool (Ubuntu Bug #2117147 / #2121230), so we cannot rely on
+          # find /usr/lib/linux-tools. We build bpftool from source instead.
           KVER=$(uname -r)
           sudo apt-get install -y "linux-tools-${KVER}" "linux-cloud-tools-${KVER}" 2>/dev/null || \
             sudo apt-get install -y linux-tools-azure linux-cloud-tools-azure 2>/dev/null || true
 
-          # ── Step 2: always install generic tools – they carry bpftool ──
-          sudo apt-get install -y linux-tools-generic 2>/dev/null || true
-
-          # ── Step 3: locate the real bpftool binary (not wrapper scripts) ──
-          # Pick the newest binary if multiple versions are present.
-          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool -type f 2>/dev/null \
-                    | sort -V | tail -1)
-          if [ -z "$BPFTOOL" ]; then
-            echo "ERROR: bpftool binary not found after install" && exit 1
-          fi
-          sudo ln -sf "$BPFTOOL" /usr/local/bin/bpftool
+          # Build bpftool from the official libbpf/bpftool repository.
+          # This is the only reliable method on Ubuntu 24.04 Azure runners.
+          git clone --quiet --depth 1 --recurse-submodules \
+            https://github.com/libbpf/bpftool.git /tmp/bpftool
+          make -C /tmp/bpftool/src -j$(nproc) >/dev/null
+          sudo install -m 0755 /tmp/bpftool/src/bpftool /usr/local/bin/bpftool
           bpftool version
 
       - name: Generate vmlinux.h from BTF (CO-RE key step)
