@@ -36,7 +36,7 @@ download_ruleset() {
 			local fsize
 			fsize=$(stat -c '%s' "$tmp" 2>/dev/null || echo 0)
 
-			if [ "$fsize" -ge 1024 ]; then
+			if [ "$fsize" -ge 100 ]; then
 				mv "$tmp" "$out"
 				chmod 0644 "$out" 2>/dev/null || true
 				chown sing-box:sing-box "$out" 2>/dev/null || chown root:sing-box "$out" 2>/dev/null || true

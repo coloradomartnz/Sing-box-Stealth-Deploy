@@ -92,7 +92,23 @@ install_missing_tools() {
 		log_warn "以下工具未安装：${missing[*]}"
 		log_info "正在安装..."
 		_run apt-get update -qq
-		_run apt-get install -y "${missing[@]}"
+		
+		# 特殊处理 python3-venv: 在某些 Ubuntu 版本上需要显式指定版本 (如 python3.12-venv)
+		local apt_packages=()
+		for m in "${missing[@]}"; do
+			if [[ "$m" == "python3-venv" ]]; then
+				local py_ver
+				py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")
+				if [ -n "$py_ver" ]; then
+					apt_packages+=("python${py_ver}-venv")
+				fi
+				apt_packages+=("python3-venv") # 同时也保留通用包
+			else
+				apt_packages+=("$m")
+			fi
+		done
+
+		_run apt-get install -y "${apt_packages[@]}"
 
 		# 目的验证：确认每个工具确实安装成功
 		local still_missing=()

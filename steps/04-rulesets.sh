@@ -42,6 +42,24 @@ deploy_step_04() {
 	pids+=($!); log_files+=("$dl_log_dir/geosite-openai.log"); optional_flags+=(1)
 	register_cleanup_pid "${pids[-1]}"
 
+	# ---- Claude (Anthropic) ----
+	_download_optional_ruleset \
+		"$RULESET_GEOSITE_ANTHROPIC_URL" \
+		"" \
+		"$ruleset_dir/geosite-anthropic.srs" \
+		> "$dl_log_dir/geosite-claude.log" 2>&1 &
+	pids+=($!); log_files+=("$dl_log_dir/geosite-claude.log"); optional_flags+=(1)
+	register_cleanup_pid "${pids[-1]}"
+
+	# ---- Gemini (Google) ----
+	_download_optional_ruleset \
+		"$RULESET_GEOSITE_GEMINI_URL" \
+		"" \
+		"$ruleset_dir/geosite-gemini.srs" \
+		> "$dl_log_dir/geosite-gemini.log" 2>&1 &
+	pids+=($!); log_files+=("$dl_log_dir/geosite-gemini.log"); optional_flags+=(1)
+	register_cleanup_pid "${pids[-1]}"
+
 	# ---- 等待所有下载并汇总结果 ----
 	local download_fail=0
 	for i in "${!pids[@]}"; do

@@ -54,3 +54,5 @@ RULESET_GEOIP_CN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/r
 # lyc8503 仓库无 openai 规则集，改用 MetaCubeX 源；FALLBACK 在主源失败时自动尝试
 RULESET_GEOSITE_OPENAI_URL="https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/openai.srs"
 RULESET_GEOSITE_OPENAI_URL_FALLBACK="https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs"
+RULESET_GEOSITE_ANTHROPIC_URL="https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/anthropic.srs"
+RULESET_GEOSITE_GEMINI_URL="https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/google-gemini.srs"
