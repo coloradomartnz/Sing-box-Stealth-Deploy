@@ -90,23 +90,12 @@ _deploy_watchdog_binary() {
 	log_info "部署 singbox-watchdog (Go Sidecar)..."
 
 	# 1. 尝试从 GitHub Release 下载 (推荐，无环境依赖)
-	local release_url
-	release_url=$(curl -sf \
-		--connect-timeout "${CONNECT_TIMEOUT:-5}" \
-		-m "${MAX_TIME:-10}" \
-		"https://api.github.com/repos/coloradomartnz/Sing-box-Stealth-Deploy/releases/latest" \
-		| jq -r '.assets[] | select(.name == "singbox-watchdog") | .browser_download_url' \
-	) || release_url=""
-
-	if [ -n "$release_url" ]; then
-		log_info "  尝试下载预编译二进制: $release_url"
-		if _run curl -fsSL -o "$target" "$release_url"; then
-			chmod +x "$target"
-			log_info "  ✓ 已成功下载并部署预编译 Watchdog"
-			return 0
-		fi
-		log_warn "  预编译二进制下载失败，尝试本地编译..."
+	if download_release_asset "singbox-watchdog" "$target"; then
+		chmod +x "$target"
+		log_info "  ✓ 已成功下载并部署预编译 Watchdog"
+		return 0
 	fi
+	log_warn "  预编译二进制下载失败，尝试本地编译..."
 
 	# 2. 回退到本地编译 (仅当有 Go 环境时)
 	if command -v go &>/dev/null && [ -d "$watchdog_src" ]; then

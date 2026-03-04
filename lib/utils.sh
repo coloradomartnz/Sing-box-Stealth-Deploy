@@ -345,3 +345,55 @@ _ensure_compat_defaults() {
 	RECOMMENDED_TUN_MTU=${RECOMMENDED_TUN_MTU:-1400}
 	LAN_SUBNET=${LAN_SUBNET:-192.168.0.0/16}
 }
+
+# ============================================================================
+# GitHub 资产下载 (Robust Download)
+# ============================================================================
+# download_release_asset <asset_name> <dest_path>
+download_release_asset() {
+	local asset_name="$1"
+	local dest="$2"
+	local owner="${GITHUB_OWNER:-coloradomartnz}"
+	local repo="${GITHUB_REPO:-Sing-box-Stealth-Deploy}"
+	local tag
+
+	# 1. 尝试探测当前 Git Tag (如果是克隆的仓库)
+	if [ -d "$PROJECT_DIR/.git" ]; then
+		tag=$(git -C "$PROJECT_DIR" describe --tags --exact-match 2>/dev/null || \
+		      git -C "$PROJECT_DIR" describe --tags --always 2>/dev/null)
+	fi
+
+	# 2. 如果检测到合法的 tag (以 v 开头)，尝试猜测直接下载链接 (绕过 API 限流)
+	if [[ "$tag" =~ ^v[0-9] ]]; then
+		local direct_url="https://github.com/${owner}/${repo}/releases/download/${tag}/${asset_name}"
+		log_info "  GitHub Tag ($tag) 已识别，尝试直接下载..."
+		if curl -fsSL --connect-timeout "${CONNECT_TIMEOUT:-5}" -m "${MAX_TIME:-20}" -o "$dest" "$direct_url"; then
+			return 0
+		fi
+		log_warn "  直接下载失败，尝试 fallback 到 GitHub API..."
+	fi
+
+	# 3. Fallback: 使用 GitHub API 获取 latest release 下载地址
+	local api_url="https://api.github.com/repos/${owner}/${repo}/releases/latest"
+	local download_url
+	
+	# 检查 jq 是否可用
+	if ! command -v jq &>/dev/null; then
+		log_warn "  系统缺失 jq，无法解析 GitHub API，尝试最后一次直接下载 (main 分支可能对应的最新 tag)..."
+		# 这是一个最后的努力，如果 API 不行，假定 tag 是主版本（目前不稳，暂不启用复杂逻辑）
+		return 1
+	fi
+
+	download_url=$(curl -sf \
+		--connect-timeout "${CONNECT_TIMEOUT:-5}" \
+		-m "${MAX_TIME:-15}" \
+		"$api_url" | jq -r ".assets[] | select(.name == \"$asset_name\") | .browser_download_url" 2>/dev/null)
+
+	if [ -n "$download_url" ] && [ "$download_url" != "null" ]; then
+		if curl -fsSL --connect-timeout "${CONNECT_TIMEOUT:-5}" -m "${MAX_TIME:-30}" -o "$dest" "$download_url"; then
+			return 0
+		fi
+	fi
+
+	return 1
+}

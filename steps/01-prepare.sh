@@ -118,23 +118,11 @@ download_bpf_object() {
 
 	mkdir -p "$(dirname "$bpf_dest")"
 
-	# 从 GitHub Release 下载预编译对象，零编译依赖
-	# 修复: 用 || release_url="" 防止 set -eo pipefail 在 curl 限流/超时时直接杀死脚本
-	local release_url
-	release_url=$(curl -sf \
-		--connect-timeout "${CONNECT_TIMEOUT:-5}" \
-		-m "${MAX_TIME:-10}" \
-		"https://api.github.com/repos/coloradomartnz/Sing-box-Stealth-Deploy/releases/latest" \
-		| jq -r '.assets[] | select(.name == "tproxy_tc.bpf.o") | .browser_download_url' \
-	) || release_url=""
-
-	if [ -z "$release_url" ]; then
+	if ! download_release_asset "tproxy_tc.bpf.o" "$bpf_dest"; then
 		log_warn "无法获取 BPF release 资产（可能是 API 限流、网络超时或尚未发布二进制），回退到 ip rule 模式"
 		_set_ebpf_mode 0
 		return 0
 	fi
-
-	_run curl -fsSL -o "$bpf_dest" "$release_url"
 
 	# 验证 ELF magic + BTF section（无需 clang，只需 file 命令）
 	if ! file "$bpf_dest" | grep -q "ELF.*BPF"; then
