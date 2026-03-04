@@ -135,7 +135,19 @@ download_bpf_object() {
 	log_info "✓ BPF CO-RE 对象已就绪: $bpf_dest"
 	_set_ebpf_mode 1
 
-	# 目标机器只需 libbpf0（运行时）+ bpftool（map 操作），不需要 clang/llvm
-	apt-get install -y --no-install-recommends libbpf0 bpftool 2>/dev/null || \
-		log_warn "libbpf0 安装失败，TC redirect 可能降级"
+	# 目标机器只需 libbpf0/1（运行时）+ bpftool（map 操作），不需要 clang/llvm
+	# 修复: Ubuntu 24.04+ 下 bpftool 是虚拟包，且 libbpf0 升级为 libbpf1
+	local bpf_pkgs=("bpftool" "libbpf0")
+	if [[ "$OS_ID" == "Ubuntu" ]]; then
+		bpf_pkgs=("linux-tools-common")
+		if [[ "${OS_VERSION%%.*}" -ge 24 ]]; then
+			bpf_pkgs+=("libbpf1")
+		else
+			bpf_pkgs+=("libbpf0")
+		fi
+	fi
+
+	log_info "正在安装 eBPF 运行时依赖: ${bpf_pkgs[*]}..."
+	apt-get install -y --no-install-recommends "${bpf_pkgs[@]}" 2>/dev/null || \
+		log_warn "eBPF 依赖安装受阻，TC redirect 可能失效"
 }
