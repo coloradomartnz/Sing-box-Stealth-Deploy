@@ -288,10 +288,10 @@ else
 		_safe_source_deployment_config "$DEPLOYMENT_CONFIG"
 
 		# O-Secure 5.3: 平滑升级迁移，若旧配置仍有敏感信息，则转移并在配置中抹除
-		local cred_dir="/usr/local/etc/sing-box/.credentials"
+		cred_dir="/usr/local/etc/sing-box/.credentials"
 		_run mkdir -p "$cred_dir"
 		_run chmod 700 "$cred_dir"
-		local do_scrub=0
+		do_scrub=0
 		if [ -n "${DASHBOARD_SECRET:-}" ]; then
 			echo -n "$DASHBOARD_SECRET" > "$cred_dir/dash_secret"
 			do_scrub=1
