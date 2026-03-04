@@ -21,14 +21,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm libelf-dev linux-headers-generic libbpf-dev
-          # On Azure runners the bpftool binary lives in linux-tools-<exact-kver>
-          # linux-tools-common only installs a wrapper that calls the versioned binary
+
+          # ── Step 1: install versioned kernel tools for the running kernel ──
+          # On Azure runners the kernel is 6.x-azure; those packages exist but
+          # do NOT ship bpftool. We install them anyway (for other tools) and
+          # then UNCONDITIONALLY also install linux-tools-generic, which does
+          # ship bpftool (at /usr/lib/linux-tools/<generic-kver>/bpftool).
           KVER=$(uname -r)
           sudo apt-get install -y "linux-tools-${KVER}" "linux-cloud-tools-${KVER}" 2>/dev/null || \
-            sudo apt-get install -y linux-tools-azure linux-cloud-tools-azure 2>/dev/null || \
-            sudo apt-get install -y linux-tools-generic
-          # Locate the real bpftool binary (not the stub wrapper)
-          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool 2>/dev/null | head -1)
+            sudo apt-get install -y linux-tools-azure linux-cloud-tools-azure 2>/dev/null || true
+
+          # ── Step 2: always install generic tools – they carry bpftool ──
+          sudo apt-get install -y linux-tools-generic 2>/dev/null || true
+
+          # ── Step 3: locate the real bpftool binary (not wrapper scripts) ──
+          # Pick the newest binary if multiple versions are present.
+          BPFTOOL=$(find /usr/lib/linux-tools -name bpftool -type f 2>/dev/null \
+                    | sort -V | tail -1)
           if [ -z "$BPFTOOL" ]; then
             echo "ERROR: bpftool binary not found after install" && exit 1
           fi
@@ -69,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
-      contents: write   # 允许创建 Release 及上传附件
+      contents: write
     steps:
       - name: Download compiled BPF object
         uses: actions/download-artifact@v4
@@ -81,7 +90,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: tproxy_tc.bpf.o
-          generate_release_notes: true   # 自动生成本次 tag 的变更说明
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

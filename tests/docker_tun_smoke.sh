@@ -19,10 +19,15 @@ ip tuntap add dev test_tun mode tun
 ip addr add 198.18.0.2/15 dev test_tun
 ip link set test_tun up
 
-# 3. Verify it is up
-# TUN interfaces without an open fd show as UNKNOWN (not UP) — both are valid
+# 3. Verify the interface has the admin UP flag set.
+#
+# Background: on Linux, a TUN interface with no open file descriptor shows:
+#   <NO-CARRIER,POINTOPOINT,MULTICAST,NOARP,UP>  state DOWN
+# The *admin* UP flag (inside <…>) is set correctly by `ip link set … up`.
+# The *operational* state is DOWN because no process holds the fd open.
+# We therefore check the angle-bracket flags, not the `state` field.
 LINK_STATE=$(ip link show test_tun)
-if ! echo "$LINK_STATE" | grep -qE 'state (UP|UNKNOWN)'; then
+if ! echo "$LINK_STATE" | grep -qE '<[^>]*\bUP\b[^>]*>|state (UP|UNKNOWN)'; then
     echo "[ERROR] Failed to bring test_tun interface UP"
     echo "Link state output: $LINK_STATE"
     exit 1
