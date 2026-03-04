@@ -27,27 +27,27 @@ _build_execution_plan() {
 
     _visit() {
         local step="$1"
-        
-        # 环检测
-        if [[ "${in_path[$step]}" == "1" ]]; then
+
+        # 环检测：使用 :- 防止 set -u 将未设键当作 unbound variable
+        if [[ "${in_path[$step]:-}" == "1" ]]; then
             log_error "检测到执行步骤循环依赖，异常步骤: $step"
             exit 1
         fi
-        
+
         # 已访问过则跳过
-        if [[ "${visited[$step]}" == "1" ]]; then
+        if [[ "${visited[$step]:-}" == "1" ]]; then
             return
         fi
 
         in_path[$step]=1
-        
+
         # 递归处理依赖
-        if [[ -n "${STEP_DEPS[$step]}" ]]; then
+        if [[ -n "${STEP_DEPS[$step]:-}" ]]; then
             for dep in ${STEP_DEPS[$step]}; do
                 _visit "$dep"
             done
         fi
-        
+
         in_path[$step]=0
         visited[$step]=1
         _EXECUTION_PLAN+=("$step")
@@ -62,12 +62,12 @@ _build_execution_plan() {
 execute_all_steps() {
     _EXECUTION_PLAN=()   # 清空上一次结果，幂等性
     _build_execution_plan
-    
+
     log_info "已计算出步骤依赖序列，计划执行 ${#_EXECUTION_PLAN[@]} 个步骤:"
     log_info "-> ${_EXECUTION_PLAN[*]}"
-    
+
     # 按照计算出的序列串行执行。
-    # 得益于主循环开启了 set -e，任何函数的非零返回都会直接熔断部署过程。
+    # 得益于主循环开启了 set -e，任何函数的非零返回都会直接燘断部署过程。
     for step in "${_EXECUTION_PLAN[@]}"; do
         if type "$step" &>/dev/null; then
             "$step"
