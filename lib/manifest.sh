@@ -14,6 +14,7 @@ declare -A STEP_DEPS=(
     ["deploy_step_06"]="deploy_step_03 deploy_step_04"
     ["deploy_step_07"]="deploy_step_05 deploy_step_06"
     ["deploy_step_08"]="deploy_step_07"
+    ["deploy_step_09"]="deploy_step_08"
 )
 
 # 保存最终调度得到的执行序列

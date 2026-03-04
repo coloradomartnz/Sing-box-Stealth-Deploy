@@ -42,6 +42,7 @@ trap '_cleanup_all' EXIT INT TERM
 
 source "$PROJECT_DIR/lib/checks.sh"
 source "$PROJECT_DIR/lib/ruleset.sh"
+source "$PROJECT_DIR/lib/service.sh"
 
 # 2. 加载子命令 (按需加载可选，这里统一加载)
 source "$PROJECT_DIR/cmd/check.sh"
@@ -58,12 +59,14 @@ source "$PROJECT_DIR/steps/05-dashboard-ui.sh"
 source "$PROJECT_DIR/steps/06-templates-and-config.sh"
 source "$PROJECT_DIR/steps/07-finalize.sh"
 source "$PROJECT_DIR/steps/08-stealth-plus.sh"
+source "$PROJECT_DIR/steps/09-sub-store.sh"
 
 # ============================================================================
 # 参数解析
 # ============================================================================
 SHOW_HELP=0
 AUTO_YES=0
+SUBSTORE_MODE=0
 NEXTDNS_ID=""
 ENABLE_DASHBOARD=1
 
@@ -74,7 +77,8 @@ usage() {
 	echo "  --check       检查运行环境健康状态 (health check)"
 	echo "  --uninstall   完整卸载 sing-box 及配置 (full uninstall)"
 	echo "  --rollback    回滚到之前的配置文件 (rollback config)"
-	echo "  --upgrade     仅执行升级（不重新询问配置）(upgrade only)"
+	echo "  --upgrade     仅执行升级（不重新询问配置）("upgrade" only)"
+	echo "  --substore    部署附带 Sub-Store 的完整订阅管理方案"
 	echo "  --dry-run     仅显示将要执行的命令 (dry run)"
 	echo "  --auto-yes    自动执行，无需交互确认 (non-interactive)"
 	echo "  --version     显示版本信息 (show version)"
@@ -108,6 +112,7 @@ while [[ $# -gt 0 ]]; do
 	--rollback) do_rollback; exit 0 ;;
 	--version) echo "sing-box-stealth-deploy v${SCRIPT_VERSION}"; exit 0 ;;
 	--status) do_status; exit 0 ;;
+	--substore) SUBSTORE_MODE=1; shift ;;
 	--upgrade) UPGRADE_MODE=1; shift ;;
 	--dry-run) DRY_RUN=1; shift ;;
 	--auto-yes) AUTO_YES=1; shift ;;
@@ -221,8 +226,10 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 
 	detect_desktop
 	
-	# 收集机场 URL
-	collect_subscription_urls
+	# 收集机场 URL (仅非 Sub-Store 模式)
+	if [ "${SUBSTORE_MODE:-0}" -eq 0 ]; then
+		collect_subscription_urls
+	fi
 	
 	# 面板配置
 	if [ "$AUTO_YES" -eq 1 ]; then
@@ -262,6 +269,8 @@ NEXTDNS_ID="$NEXTDNS_ID"
 DASHBOARD_PORT="$DASHBOARD_PORT"
 ENABLE_DASHBOARD="$ENABLE_DASHBOARD"
 IS_DESKTOP="$IS_DESKTOP"
+SUBSTORE_MODE="$SUBSTORE_MODE"
+SUBSTORE_COLLECTION_NAME="${SUBSTORE_COLLECTION_NAME:-MySubs}"
 EOF
 	
 	# 增强安全：避免敏感配置泄露
@@ -307,11 +316,20 @@ else
 			[ -f "$cred_dir/res_pass" ] && RES_PASS=$(cat "$cred_dir/res_pass")
 			[ -f "$cred_dir/res_user" ] && RES_USER=$(cat "$cred_dir/res_user")
 		fi
+
+		# 审计修复(C-05): 将订阅 URL (含 token) 迁移至凭据安全目录
+		if [ -n "${AIRPORT_URLS_STR:-}" ] || grep -q "AIRPORT_URLS_STR" "$DEPLOYMENT_CONFIG"; then
+			echo -n "${AIRPORT_URLS_STR:-}" > "$cred_dir/airport_urls"
+			do_scrub=1
+		else
+			[ -f "$cred_dir/airport_urls" ] && AIRPORT_URLS_STR=$(cat "$cred_dir/airport_urls")
+		fi
 		_run chmod 600 "$cred_dir"/* 2>/dev/null || true
 
 		if [ $do_scrub -eq 1 ]; then
 			log_info "执行旧配置脱敏清理拉取..."
-			sed -i '/DASHBOARD_SECRET=/d; /RES_PASS=/d; /RES_USER=/d' "$DEPLOYMENT_CONFIG"
+			# 审计修复(C-05): 同步清理 AIRPORT_URLS_STR
+			sed -i '/DASHBOARD_SECRET=/d; /RES_PASS=/d; /RES_USER=/d; /AIRPORT_URLS_STR=/d' "$DEPLOYMENT_CONFIG"
 		fi
 
 		# O-16: 使用 lib/utils.sh 中的集中管理函数
@@ -345,6 +363,23 @@ if [ "${ENABLE_DASHBOARD:-0}" -eq 1 ]; then
 		_masked_secret="${DASHBOARD_SECRET:0:4}****"
 	fi
 	log_info "🔑 面板访问密钥: ${_masked_secret}"
+	log_info "========================================================"
+	echo ""
+fi
+
+if [ "${SUBSTORE_MODE:-0}" -eq 1 ]; then
+	echo ""
+	log_info "========================================================"
+	log_info "🌐 Sub-Store 节点管理面板: http://127.0.0.1:${SUBSTORE_PORT:-2999}"
+	if [ -f "/opt/sub-store/substore.env" ]; then
+		# Extract random path token
+		_ss_path=$(grep SUB_STORE_FRONTEND_BACKEND_PATH "/opt/sub-store/substore.env" | cut -d'=' -f2)
+		log_info "🔒 管理入口路径: ${_ss_path:-\"未生成\"}"
+		log_info "   完整访问地址: http://127.0.0.1:${SUBSTORE_PORT:-2999}${_ss_path:-\"\"}"
+	fi
+	log_info "🛠️  [重要指示] 当前暂无代理节点 (直连状态)"
+	log_info "   1. 请在上方管理面板建立名为【${SUBSTORE_COLLECTION_NAME:-MySubs}】的集合并添加订阅"
+	log_info "   2. 配置完成后运行命令挂载并生效: sudo substore-update.sh"
 	log_info "========================================================"
 	echo ""
 fi

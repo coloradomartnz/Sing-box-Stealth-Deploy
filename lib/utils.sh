@@ -72,7 +72,8 @@ _on_err() {
 declare -a TRAP_STACK=()
 
 push_trap() {
-	local cmd="$1"
+	local name="$1"
+	local cmd="$2"
 	# 保存当前 ERR trap（解析出实际命令）
 	local current_trap
 	current_trap=$(trap -p ERR)
@@ -85,7 +86,8 @@ push_trap() {
 		current_trap="__EMPTY__"
 	fi
 
-	TRAP_STACK+=("$current_trap")
+	# 审计修复(R-05): 带名称标签压栈，便于 pop 时校验匹配
+	TRAP_STACK+=("${name}::${current_trap}")
 
 	# 链式调用：新 trap 执行后调用旧 trap
 	if [ "$current_trap" != "__EMPTY__" ]; then
@@ -98,12 +100,20 @@ push_trap() {
 }
 
 pop_trap() {
+	local expected_name="${1:-}"
 	if [ ${#TRAP_STACK[@]} -eq 0 ]; then
 		return 0
 	fi
 
-	local last_trap="${TRAP_STACK[-1]}"
+	local last_entry="${TRAP_STACK[-1]}"
 	unset 'TRAP_STACK[-1]'
+
+	# 审计修复(R-05): 校验标签名称匹配
+	local tag="${last_entry%%::*}"
+	local last_trap="${last_entry#*::}"
+	if [ -n "$expected_name" ] && [ "$tag" != "$expected_name" ]; then
+		log_warn "Trap 栈不匹配: 期望弹出 '$expected_name', 实际弹出 '$tag'"
+	fi
 
 	if [ "$last_trap" == "__EMPTY__" ]; then
 		trap - ERR
@@ -255,7 +265,8 @@ _atomic_write() {
 	# H-5 修复: 使用 %s 不带 \n，避免对 JSON 等内容添加多余尾部换行
 	if printf '%s' "$content" > "$tmp"; then
 		# C-3 修复: 确保数据落盘后再原子替换
-		python3 -c "import os; fd=os.open('$tmp',os.O_RDONLY); os.fsync(fd); os.close(fd)" 2>/dev/null || true
+		# 审计修复(C-03): 消除 python3 -c 路径注入风险，使用原生 sync 命令
+		sync "$tmp" 2>/dev/null || sync
 		if ! mv "$tmp" "$target"; then
 			rm -f "$tmp"
 			log_error "原子替换写入失败: $target"
@@ -322,6 +333,7 @@ create_rollback_point() {
 }
 
 # O-16: 集中管理参数的向下兼容默认值（升级模式用）
+# 审计注解(R-04): 此处有意不使用 local，这些变量需要全局可见以供后续步骤使用
 _ensure_compat_defaults() {
 	ENABLE_DASHBOARD=${ENABLE_DASHBOARD:-1}
 	DASHBOARD_PORT=${DASHBOARD_PORT:-9090}

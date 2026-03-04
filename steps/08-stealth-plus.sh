@@ -42,9 +42,14 @@ deploy_step_08() {
 	watchdog_dest="/usr/local/bin/singbox-residential-watchdog.sh"
 
 	if [ -f "$watchdog_tpl" ]; then
-		sed -e "s|\${RES_HOST}|$RES_HOST|g" \
-		    -e "s|\${RES_PORT}|$RES_PORT|g" \
-		    -e "s|\${DASHBOARD_PORT}|${DASHBOARD_PORT:-9090}|g" \
+		# 审计修复(C-07): 转义用户输入防止 sed 分隔符注入
+		local safe_res_host safe_res_port safe_dash_port
+		safe_res_host=$(_sed_escape_replacement "$RES_HOST")
+		safe_res_port=$(_sed_escape_replacement "$RES_PORT")
+		safe_dash_port=$(_sed_escape_replacement "${DASHBOARD_PORT:-9090}")
+		sed -e "s|\${RES_HOST}|$safe_res_host|g" \
+		    -e "s|\${RES_PORT}|$safe_res_port|g" \
+		    -e "s|\${DASHBOARD_PORT}|$safe_dash_port|g" \
 		    "$watchdog_tpl" > "$watchdog_dest"
 		chmod +x "$watchdog_dest"
 		log_info "  ✓ 监控脚本已就绪: $watchdog_dest"

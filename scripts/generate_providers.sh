@@ -16,6 +16,12 @@ OUTPUT_PATH="${4:-/usr/local/etc/sing-box/providers.json}"
 IFS=',' read -r -a URLS <<< "$URLS_CSV"
 IFS=',' read -r -a TAGS <<< "$TAGS_CSV"
 
+# 审计修复(E-08): 校验 URL 和 TAG 数量必须一致，防止静默生成错误的 tag 映射
+if [ "${#URLS[@]}" -ne "${#TAGS[@]}" ]; then
+	echo "[ERROR] URL 数量 (${#URLS[@]}) 与 TAG 数量 (${#TAGS[@]}) 不一致，请检查输入参数" >&2
+	exit 1
+fi
+
 # 构造 providers.json
 # sing-box-subscribe 期望的字段:
 #   "subscribes": [ {"tag": "...", "url": "..."} ]  — 注意是 subscribes 不是 sublinks
@@ -26,11 +32,12 @@ IFS=',' read -r -a TAGS <<< "$TAGS_CSV"
 
 # H-4 修复: 单次 jq 调用构造所有订阅，避免 O(N) 次 fork
 # 构造 JSON 数组: 将 URL 和 TAG 交错传入，单次 jq 分组
+# 审计修复(E-08): 移除冗余 tonumber（--argjson 已将 count 解析为数字）
 subs_json=$(jq -n \
   --argjson count "${#URLS[@]}" \
   '[$ARGS.positional | to_entries | .[] |
-    if .key < ($count | tonumber) then
-      {"url": .value, "tag": $ARGS.positional[.key + ($count | tonumber)]}
+    if .key < $count then
+      {"url": .value, "tag": $ARGS.positional[.key + $count]}
     else empty end]' \
   --args -- "${URLS[@]}" "${TAGS[@]}")
 

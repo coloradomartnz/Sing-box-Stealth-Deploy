@@ -148,9 +148,9 @@ assert_ok "_redact 不破坏正常文本" test "$_redact_test_3" = "正常文本
 echo ""
 echo "  --- C-4: Trap 注册机制 ---"
 # push_trap / pop_trap 基本工作
-push_trap 'echo test_trap_fired' 
+push_trap 'test_trap' 'echo test_trap_fired'
 assert_ok "push_trap 后 TRAP_STACK 非空" test "${#TRAP_STACK[@]}" -gt 0
-pop_trap
+pop_trap 'test_trap'
 assert_ok "pop_trap 后 TRAP_STACK 为空" test "${#TRAP_STACK[@]}" -eq 0
 
 # ============================================================

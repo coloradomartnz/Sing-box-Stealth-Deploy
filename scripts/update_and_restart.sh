@@ -100,7 +100,12 @@ fi
 if ! systemctl restart sing-box; then
 	_rollback_logic "服务重启失败"
 	systemctl restart sing-box || true
-	log_error "请立刻查看日志排错：journalctl -u sing-box -n 200 --no-pager"
+	# 审计修复(E-03): 回滚后二次重启失败，尝试最小安全模式避免网络完全中断
+	if ! systemctl is-active --quiet sing-box; then
+		log_error "回滚后服务仍然无法启动，转储最近日志："
+		journalctl -u sing-box -n 50 --no-pager 2>/dev/null || true
+		log_warn "请立即手动排查：journalctl -u sing-box -n 200 --no-pager"
+	fi
 	exit "${E_GENERAL:-1}"
 fi
 

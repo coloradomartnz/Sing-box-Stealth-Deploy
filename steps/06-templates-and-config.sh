@@ -204,7 +204,16 @@ deploy_step_06() {
 	# 4.3 首次执行配置生成
 	log_info "执行初次配置生成..."
 	local py_bin="$SB_SUB/venv/bin/python"
-	if [ -f "$py_bin" ]; then
+	
+	if [ "${SUBSTORE_MODE:-0}" -eq 1 ]; then
+		log_info "[Sub-Store 模式] 跳过初次订阅拉取，使用直连骨架配置冷启动..."
+		jq '.outbounds |= map(
+			if .type == "selector" then .outbounds = ["direct"] | .default = "direct"
+			elif .type == "urltest" then .outbounds = ["direct"]
+			else . end
+		)' "$config_dir/config_template.json" | _atomic_write "$config_dir/config.json"
+		log_warn "⚠ 当前暂无代理节点 (直连状态)，请在 Web UI 配置完成后运行: sudo substore-update.sh"
+	elif [ -f "$py_bin" ]; then
 		# [安全检测] 如果 providers.json 为空数组，告警
 		if grep -q '"subscribes": \[\]' "$config_dir/providers.json"; then
 			log_warn "检测到订阅列表为空！如果你在测试中，可以忽略。如果是正式环境，请确保 providers.json 配置正确。"
@@ -244,6 +253,19 @@ deploy_step_06() {
 	if ! validate_sing_box_config "$config_dir/config.json"; then
 		log_error "生成的配置校验不通过"
 		exit "${E_CONFIG:-11}"
+	fi
+
+	# 审计修复(E-01): 语义级校验——确保配置中存在有效代理节点
+	# 防止订阅返回空内容时生成一个语法正确但没有任何代理的配置
+	if [ "${SUBSTORE_MODE:-0}" -ne 1 ]; then
+		local _outbound_count
+		_outbound_count=$(jq '[.outbounds[] | select(.type != "direct" and .type != "block" and .type != "dns" and .type != "selector" and .type != "urltest")] | length' "$config_dir/config.json" 2>/dev/null || echo "0")
+		if [ "$_outbound_count" -eq 0 ]; then
+			log_error "配置文件不包含任何有效代理节点，可能是订阅拉取失败或订阅为空"
+			log_error "请检查 providers.json 中的订阅链接是否有效"
+			exit "${E_CONFIG:-11}"
+		fi
+		log_info "  ✓ 检测到 $_outbound_count 个有效代理节点"
 	fi
 
 	echo ""

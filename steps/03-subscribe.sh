@@ -10,7 +10,8 @@ deploy_step_03() {
 		log_info "[升级模式] 已存在订阅转换工具，检查更新..."
 		if [ -d "$SB_SUB" ]; then
 			# O-5: 使用子 shell 防止 cd 失败后影响后续步骤
-			(cd "$SB_SUB" && git pull 2>/dev/null) || true
+			# 审计修复(R-03): 增加更新失败提示而非静默吞错
+			(cd "$SB_SUB" && git pull 2>/dev/null) || log_warn "sing-box-subscribe 更新失败，使用现有版本继续"
 		fi
 	else
 		log_info "从 GitHub 克隆 sing-box-subscribe..."

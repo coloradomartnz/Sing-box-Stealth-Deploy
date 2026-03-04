@@ -35,6 +35,7 @@ deploy_step_02() {
 		"lib/checks.sh:/usr/local/etc/sing-box/lib/checks.sh"
 		"lib/lock.sh:/usr/local/etc/sing-box/lib/lock.sh"
 		"lib/ruleset.sh:/usr/local/etc/sing-box/lib/ruleset.sh"
+		"lib/service.sh:/usr/local/etc/sing-box/lib/service.sh"
 	)
 
 	# 创建安全凭据目录

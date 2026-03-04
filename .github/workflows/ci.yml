@@ -146,6 +146,9 @@ jobs:
     - name: Run pure function unit tests
       run: bash tests/test_unit.sh
 
+    - name: Run audit fix regression tests
+      run: bash tests/test_audit_fixes.sh
+
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest

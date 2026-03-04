@@ -146,7 +146,9 @@ if [[ "${1:-}" == "__run_check" ]]; then
   exit $?
 fi
 
-timeout 45s "$0" __run_check || {
+# 审计修复(E-06): 使用绝对路径自引用，防止 $0 被 symlink 劫持
+_self_path="$(readlink -f "$0")"
+timeout 45s "$_self_path" __run_check || {
   echo "[CRITICAL] [$(date '+%Y-%m-%d %H:%M:%S')] Health check TIMEOUT" >&2
   exit 1
 }

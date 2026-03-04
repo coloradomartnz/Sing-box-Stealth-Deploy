@@ -154,6 +154,8 @@ patch_dns_tag_in_file() {
   ' "$file" > "$tmp"
 
   jq empty "$tmp" >/dev/null
+  # 审计修复(E-02): 确保数据落盘后再原子替换，防止断电导致空文件
+  sync "$tmp" 2>/dev/null || sync
   mv "$tmp" "$file"
   if id -u sing-box >/dev/null 2>&1; then
     chown sing-box:sing-box "$file"

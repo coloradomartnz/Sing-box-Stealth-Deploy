@@ -96,17 +96,23 @@ download_bpf_object() {
 	local kernel_ver
 	kernel_ver=$(uname -r | cut -d. -f1-2 | tr -d '.')
 
+	# 审计修复(C-08): 辅助函数，先清除旧行再追加，防止重复
+	_set_ebpf_mode() {
+		sed -i '/^EBPF_TC_MODE=/d' "$DEPLOYMENT_CONFIG" 2>/dev/null || true
+		echo "EBPF_TC_MODE=$1" >> "$DEPLOYMENT_CONFIG"
+	}
+
 	# 内核版本门槛：CO-RE 需要 BTF 支持 (>= 5.4 有 BTF，>= 5.10 TC redirect 稳定)
 	if [ "$kernel_ver" -lt 510 ]; then
 		log_warn "内核 $(uname -r) < 5.10，跳过 eBPF TC 模式，保留 ip rule fwmark 回退"
-		echo "EBPF_TC_MODE=0" >> "$DEPLOYMENT_CONFIG"
+		_set_ebpf_mode 0
 		return 0
 	fi
 
 	# 检查是否已有可用 BTF (/sys/kernel/btf/vmlinux)
 	if [ ! -f /sys/kernel/btf/vmlinux ]; then
 		log_warn "内核缺少 BTF（CONFIG_DEBUG_INFO_BTF 未开启），回退"
-		echo "EBPF_TC_MODE=0" >> "$DEPLOYMENT_CONFIG"
+		_set_ebpf_mode 0
 		return 0
 	fi
 
@@ -118,7 +124,7 @@ download_bpf_object() {
 
 	if [ -z "$release_url" ]; then
 		log_warn "无法获取 BPF release 资产，回退到 ip rule 模式"
-		echo "EBPF_TC_MODE=0" >> "$DEPLOYMENT_CONFIG"
+		_set_ebpf_mode 0
 		return 0
 	fi
 
@@ -128,12 +134,12 @@ download_bpf_object() {
 	if ! file "$bpf_dest" | grep -q "ELF.*BPF"; then
 		log_error "下载的 .bpf.o 格式无效"
 		rm -f "$bpf_dest"
-		echo "EBPF_TC_MODE=0" >> "$DEPLOYMENT_CONFIG"
+		_set_ebpf_mode 0
 		return 1
 	fi
 
 	log_info "✓ BPF CO-RE 对象已就绪: $bpf_dest"
-	echo "EBPF_TC_MODE=1" >> "$DEPLOYMENT_CONFIG"
+	_set_ebpf_mode 1
 
 	# 目标机器只需 libbpf0（运行时）+ bpftool（map 操作），不需要 clang/llvm
 	apt-get install -y --no-install-recommends libbpf0 bpftool 2>/dev/null || \

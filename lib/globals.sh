@@ -41,6 +41,12 @@ DASHBOARD_PORT=9090
 DASHBOARD_SECRET="sing-box"
 METACUBEXD_URL="https://github.com/MetaCubeX/MetacubexD/releases/latest/download/compressed-dist.tgz"
 
+# Sub-Store 集成配置
+SUBSTORE_PORT=2999
+SUBSTORE_DIR="/opt/sub-store"
+SUBSTORE_DATA_DIR="/usr/local/etc/sub-store"
+SUBSTORE_COLLECTION_NAME="MySubs"
+
 # 规则集 URL (按原脚本 lyc8503 版本)
 RULESET_GEOSITE_CN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs"
 RULESET_GEOSITE_GEOLOC_NONCN_URL="https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-geolocation-!cn.srs"
