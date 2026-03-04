@@ -240,6 +240,30 @@ deploy_step_06() {
 		if [ -f "$SB_SUB/config.json" ]; then
 			mv "$SB_SUB/config.json" "$config_dir/config.json"
 		fi
+
+		# ── DNS 修复: 移除 sing-box-subscribe 注入的非法 ":53" DNS 条目 ──
+		# sing-box 1.10+ 不接受 address 只有端口的写法，用 jq 清除后用我们的模板覆盖回去
+		log_info "修复 DNS 配置（移除非法 :53 条目）..."
+		local _fixed_config
+		_fixed_config=$(mktemp /tmp/singbox-dns-fix.XXXXXX)
+
+		jq '
+		  # 1. 删掉所有 address 字段值为 ":53" 的 dns.servers 条目
+		  .dns.servers |= map(select(.address != ":53")) |
+		  # 2. 如果 dns.servers 里没有 tag=="local" 的条目，补回我们模板里正确的那个
+		  if (.dns.servers | map(select(.tag == "local")) | length) == 0 then
+		    .dns.servers += [{
+		      "tag": "local",
+		      "type": "https",
+		      "server": "dns.alidns.com",
+		      "path": "/dns-query",
+		      "domain_resolver": "bootstrap"
+		    }]
+		  else . end
+		' "$config_dir/config.json" > "$_fixed_config" \
+		  && mv "$_fixed_config" "$config_dir/config.json" \
+		  || { log_warn "DNS 修复步骤失败，跳过"; rm -f "$_fixed_config"; }
+		# ── DNS 修复结束 ──
 	fi
 
 	# 4.4 地区自动分组

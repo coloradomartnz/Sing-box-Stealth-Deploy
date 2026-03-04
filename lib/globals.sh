@@ -4,7 +4,7 @@
 # sing-box deployment project - global variables
 #
 
-SCRIPT_VERSION="3.4"
+SCRIPT_VERSION="3.5"
 GITHUB_OWNER="coloradomartnz"
 GITHUB_REPO="Sing-box-Stealth-Deploy"
 DEPLOYMENT_START_TIME=$(date '+%Y-%m-%d %H:%M:%S')
