@@ -4,25 +4,25 @@
 #
 
 deploy_step_01() {
-	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 安装 sing-box 与基础配置 =========="
+	log_step "========== [Step ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] Install sing-box and base config =========="
 
 	if [ "${UPGRADE_MODE:-0}" -eq 1 ]; then
-		log_info "[升级模式] 检查并更新 sing-box 核心..."
+		log_info "[Upgrade mode] Checking and updating sing-box core..."
 		_run apt-get update
 		_run apt-get install --only-upgrade -y sing-box
 	else
-		# 1.1 必需工具检查与安装
+		# Check and install required tools
 		install_missing_tools || exit "${E_DEPENDENCY:-14}"
 		download_bpf_object
 
-		# 1.2 安装 sing-box
+		# Install sing-box
 		if command -v sing-box &>/dev/null; then
 			local CURRENT_VERSION REINSTALL
 			CURRENT_VERSION=$(sing-box version 2>&1 | head -n1)
-			log_warn "sing-box 已安裃：$CURRENT_VERSION"
-			# 如果是自动模式或 dry-run，跳过确认
+			log_warn "sing-box already installed: $CURRENT_VERSION"
+			# Skip confirmation in auto or dry-run mode
 			if [ "${AUTO_YES:-0}" -eq 0 ] && [ "${DRY_RUN:-0}" -eq 0 ]; then
-				read -p "是否重新安装？[y/N]: " -n 1 -r REINSTALL
+				read -p "Reinstall? [y/N]: " -n 1 -r REINSTALL
 				echo
 				if [[ $REINSTALL =~ ^[Yy]$ ]]; then
 					_run apt-get remove -y sing-box || true
@@ -31,7 +31,7 @@ deploy_step_01() {
 		fi
 
 		if ! command -v sing-box &>/dev/null; then
-			log_info "配置官方 APT 源..."
+			log_info "Configuring official APT source..."
 			_run mkdir -p /etc/apt/keyrings
 			curl -fsSL https://sing-box.app/gpg.key -o /etc/apt/keyrings/sagernet.asc
 			_run chmod a+r /etc/apt/keyrings/sagernet.asc
@@ -45,26 +45,26 @@ Enabled: yes
 Signed-By: /etc/apt/keyrings/sagernet.asc
 EOF
 
-			log_info "安装 sing-box..."
+			log_info "Installing sing-box..."
 			_run apt-get update
 			_run apt-get install -y sing-box
 
 			if [ "${DRY_RUN:-0}" -eq 0 ] && ! command -v sing-box &>/dev/null; then
-				log_error "sing-box 安装失败"
+				log_error "sing-box installation failed"
 				exit "${E_DEPENDENCY:-14}"
 			fi
 		fi
 	fi
 
-	# 1.3 专用用户创建
-	log_info "正在配置 sing-box 专用用户..."
+	# Create dedicated system user
+	log_info "Configuring sing-box system user..."
 	if ! id -u sing-box >/dev/null 2>&1; then
 		_run useradd -r -s /usr/sbin/nologin sing-box
-		log_info "已创建用户 sing-box"
+		log_info "Created user sing-box"
 	fi
 
-	# 1.4 配置版本冻结 (Pinning)
-	log_info "配置版本冻结策略..."
+	# Configure version pinning
+	log_info "Configuring version pinning..."
 	local current_v
 	current_v=$(dpkg-query -W -f='${Version}' sing-box 2>/dev/null | cut -d'-' -f1)
 	if [ -n "$current_v" ]; then
@@ -75,16 +75,16 @@ Package: sing-box
 Pin: version ${major_minor}.*
 Pin-Priority: 1001
 EOF
-		log_info "已配置 APT Pin 到 ${major_minor}.* 版本线"
+		log_info "APT pinned to ${major_minor}.* 版本线"
 
-		# Ubuntu 24.04+ 专项
+		# Ubuntu 24.04+ specific
 		if [[ "$OS_ID" == "Ubuntu" && "${OS_VERSION%%.*}" -ge 24 ]]; then
 			cat >/etc/apt/apt.conf.d/51sing-box-no-auto-upgrade <<'EOF'
 Unattended-Upgrade::Package-Blacklist {
     "sing-box";
 };
 EOF
-			log_info "已禁用 sing-box 的 unattended-upgrades 自动更新"
+			log_info "Disabled unattended-upgrades for sing-box"
 		fi
 	fi
 
@@ -96,22 +96,22 @@ download_bpf_object() {
 	local kernel_ver
 	kernel_ver=$(uname -r | cut -d. -f1-2 | tr -d '.')
 
-	# 审计修复(C-08): 辅助函数，先清除旧行再追加，防止重复
+	# Remove old entry before appending (prevent duplicates)
 	_set_ebpf_mode() {
 		sed -i '/^EBPF_TC_MODE=/d' "$DEPLOYMENT_CONFIG" 2>/dev/null || true
 		echo "EBPF_TC_MODE=$1" >> "$DEPLOYMENT_CONFIG"
 	}
 
-	# 内核版本门槛：CO-RE 需要 BTF 支持 (>= 5.4 有 BTF，>= 5.10 TC redirect 稳定)
+	# Kernel version gate: CO-RE requires BTF (>= 5.10 for stable TC redirect)
 	if [ "$kernel_ver" -lt 510 ]; then
-		log_warn "内核 $(uname -r) < 5.10，跳过 eBPF TC 模式，保留 ip rule fwmark 回退"
+		log_warn "Kernel $(uname -r) < 5.10, skipping eBPF TC mode, falling back to ip rule fwmark"
 		_set_ebpf_mode 0
 		return 0
 	fi
 
-	# 检查是否已有可用 BTF (/sys/kernel/btf/vmlinux)
+	# Check for BTF support (/sys/kernel/btf/vmlinux)
 	if [ ! -f /sys/kernel/btf/vmlinux ]; then
-		log_warn "内核缺少 BTF（CONFIG_DEBUG_INFO_BTF 未开启），回退"
+		log_warn "Kernel lacks BTF (CONFIG_DEBUG_INFO_BTF not enabled), falling back"
 		_set_ebpf_mode 0
 		return 0
 	fi
@@ -119,24 +119,24 @@ download_bpf_object() {
 	mkdir -p "$(dirname "$bpf_dest")"
 
 	if ! download_release_asset "tproxy_tc.bpf.o" "$bpf_dest"; then
-		log_warn "无法获取 BPF release 资产（可能是 API 限流、网络超时或尚未发布二进制），回退到 ip rule 模式"
+		log_warn "Cannot fetch BPF release asset (API rate limit, timeout, or no binary published), falling back to ip rule mode"
 		_set_ebpf_mode 0
 		return 0
 	fi
 
-	# 验证 ELF magic + BTF section（无需 clang，只需 file 命令）
+	# Validate ELF magic and BTF section
 	if ! file "$bpf_dest" | grep -q "ELF.*BPF"; then
-		log_error "下载的 .bpf.o 格式无效"
+		log_error "Downloaded .bpf.o has invalid format"
 		rm -f "$bpf_dest"
 		_set_ebpf_mode 0
 		return 1
 	fi
 
-	log_info "✓ BPF CO-RE 对象已就绪: $bpf_dest"
+	log_info "OK BPF CO-RE object ready: $bpf_dest"
 	_set_ebpf_mode 1
 
-	# 目标机器只需 libbpf0/1（运行时）+ bpftool（map 操作），不需要 clang/llvm
-	# 修复: Ubuntu 24.04+ 下 bpftool 是虚拟包，且 libbpf0 升级为 libbpf1
+	# Target only needs libbpf (runtime) + bpftool (map ops), not clang/llvm
+	# Ubuntu 24.04+ ships bpftool as virtual pkg and libbpf1 instead of libbpf0
 	local bpf_pkgs=("bpftool" "libbpf0")
 	if [[ "$OS_ID" == "Ubuntu" ]]; then
 		bpf_pkgs=("linux-tools-common")
@@ -147,7 +147,7 @@ download_bpf_object() {
 		fi
 	fi
 
-	log_info "正在安装 eBPF 运行时依赖: ${bpf_pkgs[*]}..."
+	log_info "Installing eBPF runtime dependencies: ${bpf_pkgs[*]}..."
 	apt-get install -y --no-install-recommends "${bpf_pkgs[@]}" 2>/dev/null || \
-		log_warn "eBPF 依赖安装受阻，TC redirect 可能失效"
+		log_warn "eBPF dependency install failed, TC redirect may not work"
 }

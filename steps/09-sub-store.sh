@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 
 # ============================================================================
-# Step 09: 部署 Sub-Store (仅在 --substore 模式下)
+# Step 09: Deploy Sub-Store (only in --substore mode)
 # ============================================================================
 
 deploy_step_09() {
 	if [ "${SUBSTORE_MODE:-0}" -ne 1 ]; then
-		log_info "跳过 Sub-Store 部署 (未启用 --substore)"
+		log_info "Skipping Sub-Store deployment (--substore not set)"
 		return 0
 	fi
 
 	log_info "========================================================"
-	log_info "开始部署 Sub-Store 节点管理服务..."
+	log_info "Deploying Sub-Store subscription manager..."
 	log_info "========================================================"
 
-	# 1. 安装 Node.js 20.x LTS
-	# 审计修复(E-07): 修正版本检测正则，原\\|在grep基本正则中不生效
+	# Install Node.js 20.x LTS
+	# Fix version detection regex for Node.js
 	if ! command -v node >/dev/null 2>&1 || ! node -v | grep -qE 'v(20|22|23)\.'; then
-		log_info "正在安装 Node.js LTS..."
-		# 审计修复(C-09): 消除 curl|bash 反模式，分步下载和执行
+		log_info "Installing Node.js LTS..."
+		# Avoid curl|bash anti-pattern: download then execute
 		local _nodesource_script
 		_nodesource_script=$(mktemp /tmp/nodesource_setup_XXXXXX.sh)
 		if ! _run curl -fsSL --connect-timeout 10 --max-time 60 \
 			-o "$_nodesource_script" "https://deb.nodesource.com/setup_20.x"; then
-			log_error "Node.js 安装脚本下载失败"
+			log_error "Node.js setup script download failed"
 			rm -f "$_nodesource_script"
 			return 1
 		fi
@@ -31,11 +31,11 @@ deploy_step_09() {
 		rm -f "$_nodesource_script"
 		_run apt-get install -y nodejs
 	else
-		log_info "Node.js 已安装: $(node -v)"
+		log_info "Node.js installed: $(node -v)"
 	fi
 
-	# 2. 准备系统用户与目录
-	log_info "配置运行用户与凭据目录..."
+	# Create system user and directories
+	log_info "Configuring runtime user and credentials..."
 	if ! id -u substore >/dev/null 2>&1; then
 		useradd -r -s /usr/sbin/nologin -M substore || true
 	fi
@@ -45,16 +45,16 @@ deploy_step_09() {
 	chown -R substore:substore "${SUBSTORE_DATA_DIR:-/usr/local/etc/sub-store}"
 	chmod 700 "${SUBSTORE_DATA_DIR:-/usr/local/etc/sub-store}"
 
-	# 3. 下载 Sub-Store Bundle
-	log_info "下载 Sub-Store Release Bundle..."
+	# Download Sub-Store bundle
+	log_info "Downloading Sub-Store release bundle..."
 	_run curl -fsSL "https://github.com/sub-store-org/Sub-Store/releases/latest/download/sub-store.bundle.js" \
 		-o "${SUBSTORE_DIR:-/opt/sub-store}/sub-store.bundle.js"
 	chown -R substore:substore "${SUBSTORE_DIR:-/opt/sub-store}"
 
-	# 4. 生成鉴权令牌与环境文件
+	# Generate auth token and env file
 	local env_file="${SUBSTORE_DIR:-/opt/sub-store}/substore.env"
 	if [ ! -f "$env_file" ]; then
-		log_info "生成 Sub-Store 高强度鉴权令牌..."
+		log_info "Generating high-strength Sub-Store auth token..."
 		local rand_token
 		rand_token=$(openssl rand -hex 16)
 		cat >"$env_file" <<EOF
@@ -65,13 +65,13 @@ EOF
 	chown substore:substore "$env_file"
 	chmod 600 "$env_file"
 
-	# 4.5 安装配置更新脚本
+	# Install config update script
 	if [ -f "$(dirname "$0")/scripts/substore-update.sh" ]; then
 		install -m 755 "$(dirname "$0")/scripts/substore-update.sh" /usr/local/bin/substore-update.sh
 	fi
 
-	# 5. 配置 Systemd Service
-	log_info "注册 Sub-Store Systemd 服务..."
+	# Configure systemd service
+	log_info "Registering Sub-Store systemd service..."
 	cat >/etc/systemd/system/sub-store.service <<EOF
 [Unit]
 Description=Sub-Store Subscription Manager
@@ -86,7 +86,7 @@ EnvironmentFile=${env_file}
 ExecStart=/usr/bin/node ${SUBSTORE_DIR:-/opt/sub-store}/sub-store.bundle.js
 Restart=on-failure
 RestartSec=5
-# 限制权限
+# Restrict permissions
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
@@ -99,5 +99,5 @@ EOF
 	_run systemctl daemon-reload
 	_run systemctl enable --now sub-store
 	
-	log_info "Sub-Store 部署完成！"
+	log_info "Sub-Store deployment complete"
 }

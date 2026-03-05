@@ -121,7 +121,7 @@ EOF
 				fi
 			fi
 		else
-			log_error "❌ sing-box 服务启动失败，请检查日志"
+			log_error "sing-box service failed to start, check logs"
 		fi
 	fi
 

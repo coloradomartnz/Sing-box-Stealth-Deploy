@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # sing-box deployment project - lock management
-# 审计修复(C-04/R-02): 合并两套锁实现，消除 trap 字符串拼接注入
+# Unified lock implementation (no trap string injection)
 
-# 全局锁 fd 清理栈（函数引用，不做字符串拼接）
+# Lock fd cleanup stack (function refs, no string concatenation)
 declare -a _LOCK_CLEANUP_PID_FILES=()
 declare -a _LOCK_CLEANUP_FDS=()
 
@@ -19,20 +19,20 @@ _lock_cleanup_handler() {
 	_LOCK_CLEANUP_FDS=()
 }
 
-# 统一锁获取接口
-# 用法: acquire_lock <lock_file> [timeout_seconds]
-# 返回: 0=成功 1=超时/失败
-# 自动注册 EXIT/INT/TERM trap 进行清理
+# Unified lock acquisition
+# Usage: acquire_lock <lock_file> [timeout_seconds]
+# Returns: 0=success 1=timeout or failure
+# Auto-registers EXIT/INT/TERM trap for cleanup
 acquire_lock() {
 	local lock_file="$1"
 	local timeout="${2:-300}"
 	local lock_fd
 	local pid_file="${lock_file}.pid"
 
-	# 确保目录存在
+	# Ensure lock directory exists
 	mkdir -p "$(dirname "$lock_file")" 2>/dev/null || true
 
-	# 原子性打开文件 (安全语法，无 eval)
+	# Atomically open lock file (safe syntax, no eval)
 	exec {lock_fd}>"$lock_file"
 
 	local start
@@ -41,24 +41,24 @@ acquire_lock() {
 	while ! flock -n "$lock_fd"; do
 		local elapsed=$(($(date +%s) - start))
 
-		# 僵尸锁检测：PID 文件存在但进程已死
+		# Stale lock detection: PID file exists but process is dead
 		if [ -f "$pid_file" ]; then
 			local lock_pid
 			lock_pid=$(cat "$pid_file" 2>/dev/null || echo "")
 
 			if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
-				echo "[INFO] 检测到僵尸锁（PID $lock_pid），自动清理..." >&2
+				echo "[INFO] Stale lock detected (PID $lock_pid), auto-cleaning..." >&2
 				rm -f "$pid_file" 2>/dev/null || true
-				# 僵尸锁清理后立即重试
+				# Retry immediately after stale lock cleanup
 				continue
 			fi
 		fi
 
 		if [ "$elapsed" -ge "$timeout" ]; then
-			echo "[ERROR] 获取锁超时（${timeout}s）" >&2
-			echo "[INFO] 锁文件: $lock_file" >&2
-			[ -f "$pid_file" ] && echo "[INFO] 占用进程: $(cat "$pid_file" 2>/dev/null || echo "未知")" >&2
-			# 关闭 fd，不占用资源
+			echo "[ERROR] Lock acquisition timed out (${timeout}s)" >&2
+			echo "[INFO] Lock file: $lock_file" >&2
+			[ -f "$pid_file" ] && echo "[INFO] Held by PID: $(cat "$pid_file" 2>/dev/null || echo "unknown")" >&2
+			# Close fd to free resources
 			eval "exec ${lock_fd}>&-" 2>/dev/null || true
 			return 1
 		fi
@@ -66,10 +66,10 @@ acquire_lock() {
 		sleep 2
 	done
 
-	# 写入 PID
+	# Write PID
 	echo $$ > "$pid_file" 2>/dev/null || true
 
-	# 注册清理（使用数组+函数引用，避免 trap 字符串拼接注入）
+	# Register cleanup (array+function refs, no trap string injection)
 	_LOCK_CLEANUP_PID_FILES+=("$pid_file")
 	_LOCK_CLEANUP_FDS+=("$lock_fd")
 

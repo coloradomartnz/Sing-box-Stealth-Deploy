@@ -4,9 +4,9 @@
 #
 
 # ============================================================================
-# 颜色输出
+# Terminal color codes
 # ============================================================================
-# O-A3 修复: 仅在 TTY 环境下输出颜色码，避免 journalctl/cron 乱码
+# Emit ANSI colors only when stdout is a TTY
 if [[ -t 1 ]]; then
 	RED=$'\033[0;31m'
 	GREEN=$'\033[0;32m'
@@ -18,7 +18,7 @@ else
 fi
 
 # ============================================================================
-# 标准退出码定义 (Standard Exit Codes)
+# Standard exit codes
 # ============================================================================
 export E_GENERAL=1
 export E_NETWORK=10
@@ -28,7 +28,7 @@ export E_PERMISSION=13
 export E_DEPENDENCY=14
 
 _redact() {
-	# 增强脱敏：URL、IP、token、密钥
+	# Redact URLs, IPs, tokens, and secrets from output
 	sed -E \
 		-e 's#https?://[^[:space:]]+#<REDACTED_URL>#g' \
 		-e 's/([0-9]{1,3}\.){3}[0-9]{1,3}/<REDACTED_IP>/g' \
@@ -41,22 +41,22 @@ _on_err() {
 	local cmd_safe
 	cmd_safe="$(printf '%s' "$cmd" | _redact)"
 
-	echo -e "${RED}[ERROR]${NC} 文件: ${file}"
-	echo -e "${RED}[ERROR]${NC} 步骤: ${CURRENT_STEP:-init}"
-	echo -e "${RED}[ERROR]${NC} 行号: ${line}, 退出码: ${rc}"
-	echo -e "${RED}[ERROR]${NC} 命令: ${cmd_safe}"
+	echo -e "${RED}[ERROR]${NC} File: ${file}"
+	echo -e "${RED}[ERROR]${NC} Step: ${CURRENT_STEP:-init}"
+	echo -e "${RED}[ERROR]${NC} Line: ${line}, exit code: ${rc}"
+	echo -e "${RED}[ERROR]${NC} Command: ${cmd_safe}"
 
 	# Trouble-shooting advice based on standardized exit codes
 	case "$rc" in
-		"$E_NETWORK")    echo -e "${YELLOW}[排障指引] 检测到网络连接失败。请检查系统 DNS 或所在地区是否阻断了相关域名。${NC}" ;;
-		"$E_CONFIG")     echo -e "${YELLOW}[排障指引] 配置文件格式、参数或依赖缺失。请检查 jq 输出及输入载荷是否符合规范。${NC}" ;;
-		"$E_LOCK")       echo -e "${YELLOW}[排障指引] 获取文件锁失败或超时。如果有僵死进程，请尝试手动清理锁文件。${NC}" ;;
-		"$E_PERMISSION") echo -e "${YELLOW}[排障指引] 权限不足。部署脚本及其调用的命令需要 root 权限，请确保以 sudo 运行，并检查文件读写权限。${NC}" ;;
-		"$E_DEPENDENCY") echo -e "${YELLOW}[排障指引] 缺少关键系统依赖 (如 curl, jq, iptables 等)。请检查前置环境准备是否成功执行。${NC}" ;;
-		*)               echo -e "${YELLOW}[排障指引] 发生了未知错误。请结合上面的命令和如下的系统日志进行排查。${NC}" ;;
+		"$E_NETWORK")    echo -e "${YELLOW}[HINT] Network connection failed. Check DNS or whether the domain is blocked in your region.${NC}" ;;
+		"$E_CONFIG")     echo -e "${YELLOW}[HINT] Config file format, parameters, or dependency missing. Verify jq output and input payload.${NC}" ;;
+		"$E_LOCK")       echo -e "${YELLOW}[HINT] Failed to acquire file lock. If a stale process exists, try cleaning the lock file manually.${NC}" ;;
+		"$E_PERMISSION") echo -e "${YELLOW}[HINT] Insufficient permissions. Run with sudo and check file access rights.${NC}" ;;
+		"$E_DEPENDENCY") echo -e "${YELLOW}[HINT] Missing system dependency (curl, jq, iptables, etc). Verify prerequisite setup.${NC}" ;;
+		*)               echo -e "${YELLOW}[HINT] Unknown error. Review the command above and system logs below.${NC}" ;;
 	esac
 
-	# 如果 sing-box 已经装了/有 unit，顺手吐一点日志帮助定位
+	# Dump recent sing-box journal logs if the unit exists
 	if command -v systemctl >/dev/null 2>&1; then
 		if systemctl status sing-box --no-pager -n 30 >/dev/null 2>&1; then
 			journalctl -u sing-box -n 120 --no-pager 2>/dev/null || true
@@ -67,29 +67,28 @@ _on_err() {
 }
 
 # ============================================================================
-# 陷阱栈管理
+# Trap stack management
 # ============================================================================
 declare -a TRAP_STACK=()
 
 push_trap() {
 	local name="$1"
 	local cmd="$2"
-	# 保存当前 ERR trap（解析出实际命令）
+	# Save current ERR trap command
 	local current_trap
 	current_trap=$(trap -p ERR)
 
-	# 提取 trap 命令（去掉 "trap -- 'xxx' ERR" 的包装）
+	# Extract command from "trap -- 'command' ERR" wrapper
 	if [ -n "$current_trap" ]; then
-		# 从 "trap -- 'command' ERR" 中提取 command
 		current_trap=$(echo "$current_trap" | sed -E "s/^trap -- '(.*)' ERR$/\1/")
 	else
 		current_trap="__EMPTY__"
 	fi
 
-	# 审计修复(R-05): 带名称标签压栈，便于 pop 时校验匹配
+	# Push named entry onto stack for pop-time validation
 	TRAP_STACK+=("${name}::${current_trap}")
 
-	# 链式调用：新 trap 执行后调用旧 trap
+	# Chain new trap handler with the existing one
 	if [ "$current_trap" != "__EMPTY__" ]; then
 		# shellcheck disable=SC2064
 		trap "$cmd; $current_trap" ERR
@@ -108,11 +107,11 @@ pop_trap() {
 	local last_entry="${TRAP_STACK[-1]}"
 	unset 'TRAP_STACK[-1]'
 
-	# 审计修复(R-05): 校验标签名称匹配
+	# Validate tag name matches expected
 	local tag="${last_entry%%::*}"
 	local last_trap="${last_entry#*::}"
 	if [ -n "$expected_name" ] && [ "$tag" != "$expected_name" ]; then
-		log_warn "Trap 栈不匹配: 期望弹出 '$expected_name', 实际弹出 '$tag'"
+		log_warn "Trap stack mismatch: expected '$expected_name', got '$tag'"
 	fi
 
 	if [ "$last_trap" == "__EMPTY__" ]; then
@@ -129,11 +128,11 @@ _on_err_trap() {
 }
 
 cleanup() {
-	# O-3 修复: 显式 unset 已知敏感变量，避免 compgen 性能问题
+	# Unset known sensitive variables to avoid leaking secrets
 	unset AIRPORT_URLS AIRPORT_URLS_STR AIRPORT_TAGS NEXTDNS_ID REMOTE_MAIN_TAG 2>/dev/null || true
 	unset SUBSCRIBE_COMMIT AIRPORT_URLS_STR 2>/dev/null || true
 
-	# 临时文件清理
+	# Clean up temp files
 	rm -f /usr/local/etc/sing-box/*.tmp 2>/dev/null || true
 	rm -f /var/lib/sing-box/ruleset/*.tmp 2>/dev/null || true
 	rm -f /tmp/singbox-* 2>/dev/null || true
@@ -158,10 +157,10 @@ log_step() {
 }
 
 _run() {
-	# mkdir 始终执行——后续步骤依赖目录存在
+	# Always execute mkdir even in dry-run (later steps depend on it)
 	if [[ "$1" == "mkdir" ]]; then
 		if [ "${DRY_RUN:-0}" -eq 1 ]; then
-			echo -e "${YELLOW}[DRY-RUN]${NC} $* (实际创建以避免后续失败)"
+			echo -e "${YELLOW}[DRY-RUN]${NC} $* (created anyway to prevent downstream errors)"
 		fi
 		"$@"
 		return $?
@@ -172,13 +171,13 @@ _run() {
 		return 0
 	fi
 
-	# APT 锁处理：遇到 unattended-upgrades/dpkg 锁占用时等待并重试
+	# Retry apt-get when dpkg lock is held by unattended-upgrades
 	if [[ "$1" == "apt-get" ]]; then
 		local wait_s="${APT_LOCK_WAIT_S:-300}"
 		local interval_s="${APT_LOCK_POLL_S:-3}"
 		local start_ts
 		start_ts=$(date +%s)
-		# O-A2 修复: 将 local 声明移出循环，兼容 Bash 4.3 以下版本
+		# Declare locals outside loop for Bash 4.3 compatibility
 		local tmp rc elapsed
 
 		while true; do
@@ -191,7 +190,7 @@ _run() {
 				return 0
 			fi
 
-			# 保留 apt-get 的原始错误输出
+			# Preserve original apt-get stderr
 			cat "$tmp" >&2
 
 			if [ $rc -eq 100 ] && grep -qE "Could not get lock (/var/lib/dpkg/lock-frontend|/var/lib/dpkg/lock)|dpkg frontend lock|Unable to acquire the dpkg frontend lock" "$tmp"; then
@@ -199,11 +198,11 @@ _run() {
 				elapsed=$(($(date +%s) - start_ts))
 
 				if [ "$elapsed" -ge "$wait_s" ]; then
-					log_error "apt-get 被 dpkg 锁占用超过 ${wait_s}s，请稍后重试"
+					log_error "apt-get blocked by dpkg lock for over ${wait_s}s, please retry later"
 					return $rc
 				fi
 
-				log_warn "apt-get 被 dpkg 锁占用，等待释放后重试... (${elapsed}/${wait_s}s)"
+				log_warn "apt-get blocked by dpkg lock, waiting... (${elapsed}/${wait_s}s)"
 				sleep "$interval_s"
 				continue
 			fi
@@ -217,16 +216,16 @@ _run() {
 }
 
 _sed_escape_replacement() {
-	# 转义 sed replacement 语义字符：& / \ |
+	# Escape sed replacement meta-characters: & / \ |
 	printf '%s' "$1" | sed -e 's/[&\/|]/\\&/g'
 }
 
 _safe_source_deployment_config() {
 	local cfg="$1"
-	[ -f "$cfg" ] || { log_error "配置文件不存在: $cfg"; return 1; }
-	# 收紧正则，禁止反引号、$()、${} 等 shell 扩展
+	[ -f "$cfg" ] || { log_error "Config file not found: $cfg"; return 1; }
+	# Reject backticks, $(), ${} and other shell expansion patterns
 	if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=%+\[\]-]*"$|^[[:space:]]*$|^#' "$cfg"; then
-		log_error "配置文件格式异常，包含禁止的 shell 元字符: $cfg"
+		log_error "Config file contains forbidden shell metacharacters: $cfg"
 		return 1
 	fi
 	# shellcheck source=/dev/null
@@ -245,56 +244,55 @@ _atomic_write() {
 	local target_dir
 	target_dir="$(dirname "$target")"
 	
-	# 检查目标磁盘是否有充足可用空间 (预留至少 1MB)
+	# Verify target filesystem has at least 1MB free space
 	if ! df -P "$target_dir" >/dev/null 2>&1 || [ "$(df -P "$target_dir" | awk 'NR==2 {print $4}')" -lt 1024 ]; then
-		log_error "目标路径 $target_dir 磁盘空间耗尽或无法访问，退出原子写入。"
+		log_error "Disk full or inaccessible at $target_dir, aborting atomic write"
 		return 1
 	fi
 
 	local tmp
 	tmp=$(mktemp "$target_dir/$(basename "$target").tmp.XXXXXX") || {
-		log_error "在 $target_dir 创建临时文件失败，可能是权限或配置所致。"
+		log_error "Failed to create temp file in $target_dir (permission or config issue)"
 		return 1
 	}
 	
-	# C-3 修复: 继承目标文件的权限（如果存在）
+	# Inherit permissions from existing target file
 	if [ -f "$target" ]; then
 		chmod --reference="$target" "$tmp" 2>/dev/null || true
 	fi
 	
-	# H-5 修复: 使用 %s 不带 \n，避免对 JSON 等内容添加多余尾部换行
+	# Write content without trailing newline (preserves JSON formatting)
 	if printf '%s' "$content" > "$tmp"; then
-		# C-3 修复: 确保数据落盘后再原子替换
-		# 审计修复(C-03): 消除 python3 -c 路径注入风险，使用原生 sync 命令
+		# Flush data to disk before atomic rename
 		sync "$tmp" 2>/dev/null || sync
 		if ! mv "$tmp" "$target"; then
 			rm -f "$tmp"
-			log_error "原子替换写入失败: $target"
+			log_error "Atomic rename failed: $target"
 			return 1
 		fi
 		return 0
 	else
 		rm -f "$tmp"
-		log_error "临时文件写入失败: $tmp"
+		log_error "Failed to write temp file: $tmp"
 		return 1
 	fi
 }
 
 # ============================================================================
-# 维护与恢复
+# Maintenance and recovery
 # ============================================================================
 validate_sing_box_config() {
 	local config="$1"
 	local sb_bin="${SING_BOX_BIN:-/usr/bin/sing-box}"
-	log_info "验证配置文件: $config"
+	log_info "Validating config: $config"
 
 	if [ ! -f "$config" ]; then
-		log_error "文件不存在: $config"
+		log_error "File not found: $config"
 		return 1
 	fi
 
 	if ! jq empty "$config" >/dev/null 2>&1; then
-		log_error "JSON 语法错误"
+		log_error "JSON syntax error"
 		return 1
 	fi
 
@@ -302,7 +300,7 @@ validate_sing_box_config() {
 	check_log=$(mktemp /tmp/singbox_check.XXXXXX)
 	# shellcheck disable=SC2024
 	if ! sudo -u sing-box "$sb_bin" check -c "$config" >"$check_log" 2>&1; then
-		log_error "sing-box 语义检查失败:"
+		log_error "sing-box semantic check failed:"
 		cat "$check_log" >&2
 		rm -f "$check_log"
 		return 1
@@ -316,8 +314,8 @@ create_rollback_point() {
 	local config_dir="${1:-/usr/local/etc/sing-box}"
 	local rollback_tar="$config_dir/rollback_point.tar.gz"
 	
-	log_info "创建配置回滚点..."
-	# 收集存在的配置文件
+	log_info "Creating config rollback point..."
+	# Collect existing config files
 	local files_to_back=()
 	for f in config.json providers.json config_template.json; do
 		[ -f "$config_dir/$f" ] && files_to_back+=("$f")
@@ -326,14 +324,13 @@ create_rollback_point() {
 	if [ ${#files_to_back[@]} -gt 0 ]; then
 		tar -czf "$rollback_tar" -C "$config_dir" "${files_to_back[@]}"
 		sha256sum "$rollback_tar" > "${rollback_tar}.sha256"
-		log_info "  ✓ 已保存回滚快照: $rollback_tar (${files_to_back[*]})"
+		log_info "  OK rollback snapshot saved: $rollback_tar (${files_to_back[*]})"
 	else
-		log_warn "  ⚠ 未找到任何配置文件，跳过回滚点创建"
+		log_warn "  No config files found, skipping rollback point"
 	fi
 }
 
-# O-16: 集中管理参数的向下兼容默认值（升级模式用）
-# 审计注解(R-04): 此处有意不使用 local，这些变量需要全局可见以供后续步骤使用
+# Set backward-compatible defaults for upgrade mode (intentionally global)
 _ensure_compat_defaults() {
 	ENABLE_DASHBOARD=${ENABLE_DASHBOARD:-1}
 	DASHBOARD_PORT=${DASHBOARD_PORT:-9090}
@@ -347,7 +344,7 @@ _ensure_compat_defaults() {
 }
 
 # ============================================================================
-# GitHub 资产下载 (Robust Download)
+# GitHub release asset download
 # ============================================================================
 # download_release_asset <asset_name> <dest_path>
 download_release_asset() {
@@ -357,29 +354,29 @@ download_release_asset() {
 	local repo="${GITHUB_REPO:-Sing-box-Stealth-Deploy}"
 	local tag
 
-	# 1. 尝试探测当前 Git Tag (如果是克隆的仓库)
+	# Detect current release tag from git (exact match only, then nearest tag)
 	if [ -d "$PROJECT_DIR/.git" ]; then
 		tag=$(git -C "$PROJECT_DIR" describe --tags --exact-match 2>/dev/null || \
-		      git -C "$PROJECT_DIR" describe --tags --always 2>/dev/null)
+		      git -C "$PROJECT_DIR" describe --tags --abbrev=0 2>/dev/null || true)
 	fi
 
-	# 2. 如果检测到合法的 tag (以 v 开头)，尝试猜测直接下载链接 (绕过 API 限流)
+	# Skip non-release tags (e.g. commit hashes from --always)
 	if [[ "$tag" =~ ^v[0-9] ]]; then
 		local direct_url="https://github.com/${owner}/${repo}/releases/download/${tag}/${asset_name}"
-		log_info "  GitHub Tag ($tag) 已识别，尝试直接下载..."
+		log_info "  GitHub tag ($tag) detected, attempting direct download..."
 		if curl -fsSL --connect-timeout "${CONNECT_TIMEOUT:-5}" -m "${MAX_TIME:-60}" --retry 3 -o "$dest" "$direct_url"; then
 			return 0
 		fi
-		log_warn "  直接下载失败，尝试 fallback 到 GitHub API..."
+		log_warn "  Direct download failed, falling back to GitHub API..."
 	fi
 
-	# 3. Fallback: 使用 GitHub API 获取 latest release 下载地址
+	# Fall back to GitHub API for latest release asset URL
 	local api_url="https://api.github.com/repos/${owner}/${repo}/releases/latest"
 	local download_url
 	
-	# 检查 jq 是否可用
+	# Require jq for API response parsing
 	if ! command -v jq &>/dev/null; then
-		log_warn "  系统缺失 jq，无法解析 GitHub API。"
+		log_warn "  jq not found, cannot parse GitHub API response"
 		return 1
 	fi
 

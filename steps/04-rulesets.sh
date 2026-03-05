@@ -4,19 +4,19 @@
 #
 
 deploy_step_04() {
-	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 预下载规则集（本地化） =========="
+	log_step "========== [Step ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] Download and deploy rulesets =========="
 
 	local ruleset_dir="/var/lib/sing-box/ruleset"
 	_run mkdir -p "$ruleset_dir"
 	_run chmod 755 "$ruleset_dir"
 
-	# C-4 修复: 每个后台下载使用独立日志，避免输出交织
+	# C-4 Fix: separate logs for background downloads to avoid mixed output
 	local pids=() log_files=() optional_flags=()
 	local dl_log_dir
 	dl_log_dir=$(mktemp -d /tmp/singbox-dl.XXXXXX)
 	register_cleanup_dir "$dl_log_dir"
 
-	# ---- 必需规则集（下载失败 → 中止部署）----
+	# ---- Required rulesets (Abort if download fails) ----
 	download_ruleset "$RULESET_GEOSITE_CN_URL" "$ruleset_dir/geosite-cn.srs" \
 		> "$dl_log_dir/geosite-cn.log" 2>&1 &
 	pids+=($!); log_files+=("$dl_log_dir/geosite-cn.log"); optional_flags+=(0)
@@ -32,8 +32,8 @@ deploy_step_04() {
 	pids+=($!); log_files+=("$dl_log_dir/geoip-cn.log"); optional_flags+=(0)
 	register_cleanup_pid "${pids[-1]}"
 
-	# ---- 可选规则集（下载失败 → 仅 WARN，不中止）----
-	# lyc8503 仓库不含此文件；首选 MetaCubeX，备选 SagerNet
+	# ---- Optional rulesets (WARN only if download fails, do not abort) ----
+	# lyc8503 repository missing this file; prefer MetaCubeX, fallback SagerNet
 	_download_optional_ruleset \
 		"$RULESET_GEOSITE_OPENAI_URL" \
 		"${RULESET_GEOSITE_OPENAI_URL_FALLBACK:-}" \
@@ -60,21 +60,21 @@ deploy_step_04() {
 	pids+=($!); log_files+=("$dl_log_dir/geosite-gemini.log"); optional_flags+=(1)
 	register_cleanup_pid "${pids[-1]}"
 
-	# ---- 等待所有下载并汇总结果 ----
+	# ---- Wait for all downloads and summarize results ----
 	local download_fail=0
 	for i in "${!pids[@]}"; do
 		if ! wait "${pids[$i]}"; then
 			if [ "${optional_flags[$i]}" -eq 1 ]; then
-				# 可选规则集：降级为警告
-				log_warn "可选规则集下载失败（不影响主要功能），日志如下:"
+				# Optional rulesets: downgrade to warning
+				log_warn "Optional ruleset download failed (non-critical), logs below:"
 				cat "${log_files[$i]}" >&2
 			else
 				download_fail=1
-				log_error "规则集下载失败，日志如下:"
+				log_error "Ruleset download failed, logs below:"
 				cat "${log_files[$i]}" >&2
 			fi
 		else
-			# 成功也输出日志（包含 INFO 信息）
+			# Output log even on success (contains INFO messages)
 			cat "${log_files[$i]}"
 		fi
 	done
@@ -82,17 +82,17 @@ deploy_step_04() {
 	rm -rf "$dl_log_dir"
 
 	if [ "$download_fail" -eq 1 ]; then
-		log_error "一个或多个必需规则集下载失败。详细日志已输出到上方"
+		log_error "One or more required rulesets failed to download. See logs above"
 		exit "${E_NETWORK:-10}"
 	fi
 
-	log_info "规则集准备完成 ✓"
+	log_info "Rulesets ready OK"
 	echo ""
 }
 
 # ---------------------------------------------------------------------------
 # _download_optional_ruleset <primary_url> <fallback_url> <dest_path>
-# 先尝试主 URL，失败后尝试备用 URL；两者均失败时以非零状态退出（由调用方降级处理）
+# Try primary URL first, then fallback; non-zero exit lets caller downgrade
 # ---------------------------------------------------------------------------
 _download_optional_ruleset() {
 	local primary_url="$1"
@@ -104,7 +104,7 @@ _download_optional_ruleset() {
 	fi
 
 	if [ -n "$fallback_url" ]; then
-		log_warn "主源下载失败，尝试备用源: $fallback_url"
+		log_warn "Primary source failed, trying fallback: $fallback_url"
 		if download_ruleset "$fallback_url" "$dest"; then
 			return 0
 		fi

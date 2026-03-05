@@ -5,7 +5,7 @@
 #
 
 detect_os() {
-	# 临时开启 nocasematch 用于 case 标准化 ID
+	# Enable nocasematch for case-insensitive ID matching
 	local _nocasematch_was_off=1
 	shopt -q nocasematch && _nocasematch_was_off=0
 	shopt -s nocasematch 2>/dev/null || true
@@ -15,7 +15,7 @@ detect_os() {
 		[ "$_nocasematch_was_off" -eq 1 ] && shopt -u nocasematch 2>/dev/null || true
 	}
 
-	# 优先使用 lsb_release
+	# Prefer lsb_release
 	if command -v lsb_release &>/dev/null; then
 		OS_ID=$(lsb_release -is)
 		OS_VERSION=$(lsb_release -rs)
@@ -24,8 +24,8 @@ detect_os() {
 		return 0
 	fi
 
-	# Fallback: 解析 /etc/os-release
-	# O-A1 修复: 在子 shell 中 source 避免全局命名空间污染
+	# Fallback: parse /etc/os-release
+	# Source in subshell to avoid namespace pollution
 	if [ -f /etc/os-release ]; then
 		# shellcheck disable=SC1091
 		OS_ID=$(. /etc/os-release && echo "${ID^}")
@@ -34,7 +34,7 @@ detect_os() {
 		# shellcheck disable=SC1091
 		OS_CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-unknown}")
 
-		# 标准化 ID
+		# Normalize distro ID
 		case "$OS_ID" in
 		Debian | Ubuntu)
 			_detect_os_cleanup
@@ -52,7 +52,7 @@ detect_os() {
 }
 
 check_network() {
-	log_info "检查网络连接（访问 sing-box 仓库所需站点）..."
+	log_info "Checking network connectivity (sing-box repository sites)..."
 	local urls=(
 		"https://sing-box.app/gpg.key"
 		"https://deb.sagernet.org/"
@@ -60,14 +60,14 @@ check_network() {
 
 	for u in "${urls[@]}"; do
 		if curl -fsSL --connect-timeout "${CONNECT_TIMEOUT:-5}" -m "${MAX_TIME:-10}" -o /dev/null "$u"; then
-			log_info "网络检查通过: $u"
+			log_info "Network check passed: $u"
 			return 0
 		fi
 	done
 
-	log_warn "HTTPS 检查失败，尝试 ICMP ping 兜底..."
+	log_warn "HTTPS check failed, trying ICMP ping fallback..."
 	if ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 || ping -c1 -W2 8.8.8.8 >/dev/null 2>&1; then
-		log_warn "⚠️ ping 通但 HTTPS 不通：可能是透明代理/证书/防火墙拦截导致"
+		log_warn "Ping OK but HTTPS failed: possible transparent proxy, cert, or firewall issue"
 		return 0
 	fi
 
@@ -75,7 +75,7 @@ check_network() {
 }
 
 install_missing_tools() {
-	log_info "检查必需工具..."
+	log_info "Checking required tools..."
 	local tools=(curl git python3 python3-venv jq)
 	local missing=()
 	for cmd in "${tools[@]}"; do
@@ -89,11 +89,11 @@ install_missing_tools() {
 	done
 
 	if [ ${#missing[@]} -gt 0 ]; then
-		log_warn "以下工具未安装：${missing[*]}"
-		log_info "正在安装..."
+		log_warn "Missing tools: ${missing[*]}"
+		log_info "Installing missing tools..."
 		_run apt-get update -qq
 		
-		# 特殊处理 python3-venv: 在某些 Ubuntu 版本上需要显式指定版本 (如 python3.12-venv)
+		# Handle python3-venv: Ubuntu may require version-specific pkg (e.g. python3.12-venv)
 		local apt_packages=()
 		for m in "${missing[@]}"; do
 			if [[ "$m" == "python3-venv" ]]; then
@@ -102,7 +102,7 @@ install_missing_tools() {
 				if [ -n "$py_ver" ]; then
 					apt_packages+=("python${py_ver}-venv")
 				fi
-				apt_packages+=("python3-venv") # 同时也保留通用包
+				apt_packages+=("python3-venv") # Also keep generic package
 			else
 				apt_packages+=("$m")
 			fi
@@ -110,7 +110,7 @@ install_missing_tools() {
 
 		_run apt-get install -y "${apt_packages[@]}"
 
-		# 目的验证：确认每个工具确实安装成功
+		# Verify each tool was actually installed
 		local still_missing=()
 		for cmd in "${missing[@]}"; do
 			if [[ "$cmd" == "python3-venv" ]]; then
@@ -122,8 +122,8 @@ install_missing_tools() {
 			fi
 		done
 		if [ ${#still_missing[@]} -gt 0 ]; then
-			log_error "以下必需工具安装失败：${still_missing[*]}"
-			log_error "请手动安装后重试"
+			log_error "Failed to install required tools: ${still_missing[*]}"
+			log_error "Please install manually and retry"
 			return 1
 		fi
 	fi
@@ -132,9 +132,9 @@ install_missing_tools() {
 
 detect_interface_type() {
 	local iface="$1"
-	# 检查是否为虚拟接口
+	# Check if interface is virtual
 	if [ -L "/sys/class/net/$iface/device" ]; then
-		# 物理网卡：只有当默认路由实际走 ppp* 时，才认为是 PPPoE 嵌套
+		# Physical NIC: only flag PPPoE if default route goes through ppp*
 		if ip route show default 2>/dev/null | grep -qE '\bdev ppp[0-9]+'; then
 			echo "pppoe_nested"
 			return
@@ -145,7 +145,7 @@ detect_interface_type() {
 	elif [[ "$iface" =~ ^(tun|tap)[0-9]*$ ]]; then
 		echo "vpn"
 	else
-		# 仅当该接口确实存在全局 IPv6 地址时，才标记 ipv6
+		# Only flag ipv6 if the interface has a global-scope IPv6 address
 		if ip -6 addr show dev "$iface" scope global 2>/dev/null | grep -q "inet6"; then
 			echo "ipv6"
 		else
@@ -155,26 +155,26 @@ detect_interface_type() {
 }
 
 probe_pmtu() {
-	local target="$1"  # 探测目标 IP
-	local max_mtu="$2" # 起始 MTU
+	local target="$1"  # Probe target IP
+	local max_mtu="$2" # Starting MTU
 
-	# O-7: 验证探测目标可达性，不可达则尝试国内目标
+	# Verify probe target reachability, try domestic target on failure
 	if ! timeout 2 ping -c 1 -W 1 -- "$target" >/dev/null 2>&1; then
 		if timeout 2 ping -c 1 -W 1 -- "223.5.5.5" >/dev/null 2>&1; then
 			target="223.5.5.5"
 		fi
 	fi
 
-	# 二分法探测（从 max_mtu 开始递减）
+	# Binary search probe (start from max_mtu)
 	local low=1280
 	local high=$max_mtu
 	local result=$low
 
 	while [ "$low" -le "$high" ]; do
 		local mid=$(((low + high) / 2))
-		local payload=$((mid - 28)) # 减去 IP(20) + ICMP(8) 头
+		local payload=$((mid - 28)) # Subtract IP(20) + ICMP(8) headers
 
-		# 使用 ping -M do 禁止分片，-s 设置 payload 大小
+		# Use ping -M do to disable fragmentation
 		if timeout 2 ping -M "do" -s "$payload" -c 1 -W 1 -- "$target" >/dev/null 2>&1; then
 			result=$mid
 			low=$((mid + 1))
@@ -190,7 +190,7 @@ detect_lan_subnet() {
 	local iface="$1"
 	local addr_with_mask
 
-	# 尝试使用 ipcalc（更精确）
+	# Try ipcalc if available (more precise)
 	if command -v ipcalc &>/dev/null; then
 		addr_with_mask=$(ip -4 addr show "$iface" | grep 'inet ' | awk '{print $2}' | head -n1)
 		if [ -n "$addr_with_mask" ]; then
@@ -203,13 +203,13 @@ detect_lan_subnet() {
 		fi
 	fi
 
-	# Fallback：使用 ip addr 解析 + 位运算通用方案
+	# Fallback: parse ip addr output with bit arithmetic
 	addr_with_mask=$(ip -o -f inet addr show "$iface" | awk '{print $4}' | head -n1)
 	if [ -n "$addr_with_mask" ]; then
 		local ip="${addr_with_mask%/*}"
 		local mask="${addr_with_mask##*/}"
 		
-		# O-2 修复: 位运算正确计算任意掩码长度的网络地址
+		# Correctly compute network address with bit arithmetic
 		local -a octets
 		IFS='.' read -ra octets <<< "$ip"
 		local ip_int=$(( (octets[0]<<24) + (octets[1]<<16) + (octets[2]<<8) + octets[3] ))
@@ -227,7 +227,7 @@ detect_lan_subnet() {
 
 _validate_cidr() {
 	local cidr="$1"
-	# 匹配 X.X.X.X/N 格式 (N = 0-32)
+	# Match X.X.X.X/N format (N = 0-32)
 	if [[ ! "$cidr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]]; then
 		return 1
 	fi

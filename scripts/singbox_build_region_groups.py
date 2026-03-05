@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-sing-box 地区自动分组脚本
-功能：扫描订阅节点名称中的 emoji 旗帜，自动生成按地区分类的 urltest 出站
+Scan proxy node tags for region emoji flags and generate per-region urltest outbounds
 """
 import json, os, sys, fcntl, time, re
 from collections import defaultdict
 
-# 地区名称到国家代码的映射，提取为全局常量，避免每次循环重复初始化
+# Map region names to country codes (global constant, initialized once)
 NAME_CC_MAP = {
     "香港": "hk", "hk": "hk", "hongkong": "hk", "hong kong": "hk",
     "台湾": "tw", "tw": "tw", "taiwan": "tw", 
@@ -29,47 +28,38 @@ NAME_CC_MAP = {
 }
 
 def acquire_lock(lockfile, timeout=300):
-    """
-    原子化获取文件锁（带僵尸锁检测）
-    
-    Args:
-        lockfile: 锁文件路径
-        timeout: 超时时间（秒）
-    
-    Returns:
-        lock对象（成功）或 None（失败）
-    """
+    """Acquire an exclusive file lock with stale-lock detection"""
     pid_file = f"{lockfile}.pid"
     
-    # 1. 原子性打开锁文件
+    # Open lock file atomically
     try:
         lock = open(lockfile, 'w')
     except IOError as e:
-        print(f"ERROR: 无法打开锁文件 {lockfile}: {e}", file=sys.stderr)
+        print(f"ERROR: cannot open lock file {lockfile}: {e}", file=sys.stderr)
         return None
     
     start_time = time.time()
     
-    # 2. 尝试获取锁（非阻塞）
+    # Try non-blocking lock acquisition
     while True:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             
-            # 3. 成功获取锁，写入 PID
+            # Write PID on successful lock
             try:
                 with open(pid_file, 'w') as pf:
                     pf.write(str(os.getpid()))
             except IOError as e:
-                print(f"WARN: 无法写入 PID 文件 {pid_file}: {e}", file=sys.stderr)
+                print(f"WARN: cannot write PID file {pid_file}: {e}", file=sys.stderr)
             
-            # 4. 注册清理函数
+            # Register cleanup handler
             import atexit
             atexit.register(lambda: cleanup_lock(pid_file))
             
             return lock
             
         except IOError:
-            # 锁被占用，检查是否为僵尸锁
+            # Lock held, check for stale lock
             elapsed = time.time() - start_time
             
             if os.path.exists(pid_file):
@@ -77,37 +67,37 @@ def acquire_lock(lockfile, timeout=300):
                     with open(pid_file, 'r') as pf:
                         lock_pid = int(pf.read().strip())
                     
-                    # 检查进程是否存在
+                    # Check if holding process is still alive
                     try:
-                        os.kill(lock_pid, 0)  # 信号 0 仅检测存在性
-                        # 进程存在
+                        os.kill(lock_pid, 0)
+                        # Process alive, wait or timeout
                         if elapsed >= timeout:
-                            print(f"ERROR: 锁被占用（PID {lock_pid}），超时 {timeout}s", 
+                            print(f"ERROR: lock held by PID {lock_pid}, timed out after {timeout}s", 
                                   file=sys.stderr)
                             return None
                     except OSError:
-                        # 僵尸锁
-                        print(f"INFO: 检测到僵尸锁（PID {lock_pid}），等待清理...", 
+                        # Stale lock detected
+                        print(f"INFO: stale lock detected (PID {lock_pid}), waiting for cleanup", 
                               file=sys.stderr)
                         
                 except (IOError, ValueError):
                     pass
             
             if elapsed >= timeout:
-                print(f"ERROR: 获取锁超时（{timeout}s）", file=sys.stderr)
-                print(f"INFO: 锁文件: {lockfile}", file=sys.stderr)
+                print(f"ERROR: lock acquisition timed out ({timeout}s)", file=sys.stderr)
+                print(f"INFO: lock file: {lockfile}", file=sys.stderr)
                 return None
             
             time.sleep(2)
 
 def cleanup_lock(pid_file):
-    """清理锁文件"""
+    """Remove PID file if owned by current process"""
     try:
         if os.path.exists(pid_file):
             with open(pid_file, 'r') as pf:
                 stored_pid = int(pf.read().strip())
             
-            # 仅清理本进程创建的 PID 文件
+            # Only remove PID file created by this process
             if stored_pid == os.getpid():
                 os.remove(pid_file)
     except (IOError, ValueError):
@@ -128,7 +118,7 @@ def main():
 
 def _run_logic():
     CONFIG = sys.argv[1] if len(sys.argv) > 1 else "/usr/local/etc/sing-box/config.json"
-    # 优先从环境变量读取，其次从配置文件读取
+    # Prefer env var, fall back to deployment config file
     DEFAULT_REGION = os.environ.get("DEFAULT_REGION", "").lower()
     if not DEFAULT_REGION:
         deploy_cfg = "/usr/local/etc/sing-box/.deployment_config"
@@ -136,8 +126,8 @@ def _run_logic():
             try:
                 with open(deploy_cfg) as dc:
                     for line in dc:
-                        if line.startswith("DEFAULT_REGION="):
-                            # 更健壮的解析，去首尾空白然后去除单双引号
+                        if line.startswith("DEFAULT_REGION="):  # Parse region from config
+                            # Strip whitespace and surrounding quotes
                             val = line.strip().split("=", 1)[1].strip()
                             DEFAULT_REGION = val.strip('\'"').lower()
                             break
@@ -147,17 +137,17 @@ def _run_logic():
         DEFAULT_REGION = "jp"
     
     if not os.path.exists(CONFIG):
-        print(f"❌ 配置文件不存在: {CONFIG}", file=sys.stderr)
+        print(f"ERROR: config file not found: {CONFIG}", file=sys.stderr)
         sys.exit(1)
     
     try:
         with open(CONFIG, "r", encoding="utf-8") as f:
             cfg = json.load(f)
     except Exception as e:
-        print(f"❌ 配置文件读取失败: {e}", file=sys.stderr)
+        print(f"ERROR: failed to read config file: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 地区名称映射
+    # Region display names
     REGION_NAMES = {
         "hk": "🇭🇰 香港", "tw": "🇹🇼 台湾", "jp": "🇯🇵 日本",
         "sg": "🇸🇬 新加坡", "us": "🇺🇸 美国", "kr": "🇰🇷 韩国",
@@ -165,23 +155,23 @@ def _run_logic():
         "au": "🇦🇺 澳大利亚", "in": "🇮🇳 印度", "tr": "🇹🇷 土耳其",
     }
 
-    # 排除关键词
+    # Exclude info/traffic nodes by keyword
     EXCLUDE_KEYWORDS = ["流量", "过期", "剩余", "Expire", "Traffic", "官网", "网址", "地址"]
 
     def is_regional_indicator(c):
         return 0x1F1E6 <= ord(c) <= 0x1F1FF
 
-    # O-21: 预编译正则,避免每次调用都重新编译
+    # Pre-compile regex for two-letter country code boundary match
     CC_PATTERN = re.compile(r'\b([A-Z]{2})\b')
 
     def flag_to_cc(s):
-        # 尝试通过名字直接匹配
+        # Match by region name first
         lower_s = s.lower()
         for key, cc in NAME_CC_MAP.items():
             if key in lower_s:
                 return cc
                 
-        # 尝试 Emoji 匹配
+        # Match by regional indicator emoji
         s = s.lstrip()
         if len(s) >= 2:
             a, b = s[0], s[1]
@@ -189,7 +179,7 @@ def _run_logic():
                 cc = chr(ord('A') + (ord(a) - 0x1F1E6)) + chr(ord('A') + (ord(b) - 0x1F1E6))
                 return cc.lower()
                 
-        # O-20: 使用预编译正则匹配两位大写字母边界词
+        # Match two-letter uppercase boundary word via pre-compiled regex
         match = CC_PATTERN.search(s)
         if match:
             return match.group(1).lower()
@@ -208,6 +198,11 @@ def _run_logic():
             continue
         node_tags.append(tag)
 
+    # Early return if no proxy nodes found (prevents IndexError downstream)
+    if not node_tags:
+        print("WARN: no proxy nodes found in config, skipping region group generation", file=sys.stderr)
+        return
+
     groups = defaultdict(list)
     for tag in node_tags:
         cc = flag_to_cc(tag) or "other"
@@ -215,14 +210,14 @@ def _run_logic():
 
     region_urltests = []
     
-    # 全局自动
+    # Global auto-select group
     if node_tags:
         region_urltests.append({
             "type": "urltest", "tag": "🌏 全局自动", "outbounds": node_tags,
             "url": "https://www.gstatic.com/generate_204", "interval": "3m", "tolerance": 50
         })
 
-    # 各地区
+    # Per-region urltest groups
     for cc in sorted(groups.keys()):
         if cc == "other": continue
         tag = REGION_NAMES.get(cc, f"🌐 {cc.upper()}")
@@ -231,14 +226,14 @@ def _run_logic():
             "url": "https://www.gstatic.com/generate_204", "interval": "3m", "tolerance": 50
         })
 
-    # 其他地区
+    # Catch-all region group
     if "other" in groups:
         region_urltests.append({
             "type": "urltest", "tag": "🌍 其他地区", "outbounds": groups["other"],
             "url": "https://www.gstatic.com/generate_204", "interval": "3m", "tolerance": 50
         })
 
-    # Proxy selector
+    # Build or update the proxy selector outbound
     proxy = next((ob for ob in outbounds if ob.get("type") == "selector" and ob.get("tag") == "🚀 节点选择"), None)
     if proxy is None:
         proxy = {"type": "selector", "tag": "🚀 节点选择", "outbounds": []}
@@ -246,11 +241,11 @@ def _run_logic():
 
     region_tags = [u["tag"] for u in region_urltests]
     
-    # 提取 proxy 原本的非自动项（保留手动节点节点，同时去重避免重复增加 region_tags）
+    # Keep manual node tags, remove stale region tags to avoid duplicates
     original_outbounds = proxy.get("outbounds", [])
     filtered_outbounds = []
     
-    # 我们不要保留旧的自动分组地区标签，因为上面我们重新生成了 region_tags
+    # Strip old auto-generated region prefixes (we regenerated them above)
     old_region_prefixes = ("🌏", "🇭🇰", "🇹🇼", "🇯🇵", "🇸🇬", "🇺🇸", "🇰🇷", "🇬🇧", "🇩🇪", "🇨🇦", "🇦🇺", "🇮🇳", "🇹🇷", "🌍", "🌐")
     
     for tag in original_outbounds:
@@ -258,14 +253,14 @@ def _run_logic():
             continue
         filtered_outbounds.append(tag)
         
-    # 合并：地区分组在最前面，然后是具体节点组，最后是 direct
+    # Merge: region groups first, then individual nodes, then direct
     final_proxy_outbounds = region_tags + filtered_outbounds
     if "direct" not in final_proxy_outbounds:
         final_proxy_outbounds.append("direct")
         
     proxy["outbounds"] = final_proxy_outbounds
 
-    # 默认地区
+    # Set default region
     if DEFAULT_REGION == "auto" and "🌏 全局自动" in region_tags:
         proxy["default"] = "🌏 全局自动"
     else:
@@ -273,13 +268,14 @@ def _run_logic():
         if default_tag in region_tags:
             proxy["default"] = default_tag
         else:
-            proxy["default"] = "🌏 全局自动" if "🌏 全局自动" in region_tags else region_tags[0]
+            if region_tags:
+                proxy["default"] = "🌏 全局自动" if "🌏 全局自动" in region_tags else region_tags[0]
 
-    # 确保 direct
+    # Ensure a direct outbound exists
     if not any(ob.get("type") == "direct" and ob.get("tag") == "direct" for ob in outbounds):
         outbounds.append({"type": "direct", "tag": "direct"})
 
-    # 移除旧的分组
+    # Remove old region urltest outbounds before reinserting
     outbounds = [ob for ob in outbounds 
                  if not (ob.get("type") == "urltest" and ob.get("tag", "").startswith(("🌏", "🇭🇰", "🇹🇼", "🇯🇵", "🇸🇬", "🇺🇸", "🇰🇷", "🇬🇧", "🇩🇪", "🇨🇦", "🇦🇺", "🇮🇳", "🇹🇷", "🌍", "🌐")))]
 
@@ -290,8 +286,9 @@ def _run_logic():
       json.dump(cfg, f, ensure_ascii=False, indent=2)
     os.replace(tmp, CONFIG)
 
-    print(f"✅ 已生成 {len(region_urltests)} 个地区分组")
-    print(f"✅ 默认地区: {proxy['default']}")
+    print(f"OK: generated {len(region_urltests)} region groups")
+    if "default" in proxy:
+        print(f"OK: default region: {proxy['default']}")
 
 if __name__ == "__main__":
     main()

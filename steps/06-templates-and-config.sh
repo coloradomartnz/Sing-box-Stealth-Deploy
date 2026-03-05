@@ -4,16 +4,16 @@
 #
 
 deploy_step_06() {
-	log_step "========== [第 ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] 生成配置模板与初次订阅 =========="
+	log_step "========== [Step ${CURRENT_STEP_INDEX:-?} / ${TOTAL_STEPS_COUNT:-?}] Generate config templates and initial subscription =========="
 
 	local config_dir="/usr/local/etc/sing-box"
 	local template_src_dir
 	template_src_dir="$(dirname "$(readlink -f "$0")")/templates"
 
-	# 4.1 部署底座模板 (config_template.json.tpl)
-	log_info "处理配置模板..."
+	# Deploy base config template
+	log_info "Processing config template..."
 	
-	# 设置模板变量
+	# Set template variables
 	local tun_address dns_strategy bootstrap_dns
 	if [ "${HAS_IPV6:-0}" -eq 1 ]; then
 		tun_address='["172.18.0.1/30", "fd00::1/126"]'
@@ -23,18 +23,18 @@ deploy_step_06() {
 		dns_strategy='"ipv4_only"'
 	fi
 
-	# 自动选择 Bootstrap DNS
-	# [风险注解]
-	# 此处初始使用明文 223.5.5.5 / 8.8.8.8 作为 Bootstrap（UDP/53），
-	# 仅用于在 sing-box 隧道建立前，临时解析 DoH 域名等基础设施节点。
-	# 在 strict_route: true 启用的前提下，流量接管会阻断常规应用的 DNS 泄漏，
-	# 且一旦 DoH 解析完成建立隧道，日常解析即受保护。此处短连属可控风险。
+	# Select bootstrap DNS
+	# [Risk note]
+	# Initial plaintext DNS (223.5.5.5 / 8.8.8.8) is used as bootstrap (UDP/53)
+	# Only used to resolve DoH infrastructure domains before tunnel is established
+	# strict_route:true blocks regular app DNS leaks after tunnel is up
+	# Once DoH resolves and tunnel establishes, daily DNS is protected
 	bootstrap_dns="223.5.5.5"
 	if ! timeout 2 ping -c1 -W1 223.5.5.5 >/dev/null 2>&1; then
 		bootstrap_dns="8.8.8.8"
 	fi
 
-	# 生成 NextDNS 服务器块（根据 ENABLE_NEXTDNS 开关）
+	# Generate NextDNS server block based on toggle
 	local nextdns_server_block="null"
 	if [ "${ENABLE_NEXTDNS:-0}" -eq 1 ]; then
 		nextdns_server_block=',
@@ -48,8 +48,8 @@ deploy_step_06() {
       }'
 	fi
 
-	# 处理自定义分流规则 [O-1: 采用 JQ 原生生成]
-	log_info "处理自定义分流规则..."
+	# Process custom routing rules (JQ-native generation)
+	log_info "Processing custom routing rules..."
 	
 	_gen_custom_rules_jq() {
 		local list_file="$1"
@@ -90,13 +90,13 @@ deploy_step_06() {
 	cd_arr=$(jq -s 'map(select(length > 0))' <<< "$cd_direct $cd_proxy")
 	nd_json=${nextdns_server_block:-null}
 
-	# 处理 config_template.json.tpl
+	# Process config_template.json.tpl
 	if [ -f "$template_src_dir/config_template.json.tpl" ]; then
 		local safe_secret="${DASHBOARD_SECRET:-sing-box}"
 		local safe_res_pass="${RES_PASS:-}"
 		local safe_res_user="${RES_USER:-}"
 		
-		# O-Secure 5.3: 提取敏感信息至凭证安全目录
+		# Extract sensitive values to secure credentials directory
 		local cred_dir="/usr/local/etc/sing-box/.credentials"
 		_run mkdir -p "$cred_dir"
 		_run chmod 700 "$cred_dir"
@@ -105,7 +105,7 @@ deploy_step_06() {
 		echo -n "$safe_res_user" > "$cred_dir/res_user"
 		_run chmod 600 "$cred_dir"/*
 
-		# 第一阶段: 使用 JQ 构建参数变量的临时 JSON
+		# Phase 1: Build temporary JSON with parameter vars
 		local vars_json
 		vars_json=$(mktemp /tmp/singbox-vars.XXXXXX)
 		jq -n \
@@ -130,7 +130,7 @@ deploy_step_06() {
 		     res_port: ($res_port | tonumber)
 		   }' > "$vars_json"
 
-		# 第二阶段: 依托 JQ 进行对象级无损注入 (此处不注入任何敏感密码信息，由启动脚本挂载)
+		# Phase 2: Lossless JQ object injection (no secrets injected here)
 		jq --slurpfile vars "$vars_json" \
 		   --argjson cr "$cr_arr" \
 		   --argjson cd "$cd_arr" \
@@ -152,7 +152,7 @@ deploy_step_06() {
 		   .dns.rules = ($cd + .dns.rules) |
 		   # ND JSON may be string "null" or json from earlier steps.
 		   (if $nd != "null" then .dns.servers = (.dns.servers[:3] + [$nd|fromjson] + .dns.servers[3:]) else . end) |
-		   # Stealth+ 逻辑：如果未配置住宅代理，移除相关出站并修改 AI 组
+		   # Stealth+: if residential proxy is not configured, remove related outbounds
 		   (if $has_res == "" then
 		     del(.outbounds[] | select(.tag == "🏠 住宅代理-中转出口")) |
 		     (.outbounds[] |= if .tag == "🤖 AI专用-精准分流" then .outbounds = ["🚀 节点选择", "direct"] | .default = "🚀 节点选择" else . end)
