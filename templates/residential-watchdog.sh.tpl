@@ -29,6 +29,7 @@ _check_res() {
 _switch_to() {
     local target="$1"
     curl -s -X PUT "${CLASH_API}/proxies/${SELECTOR_TAG}" \
+         --max-time 5 \
          -H "Authorization: Bearer ${CLASH_SECRET}" \
          -H "Content-Type: application/json" \
          -d "{\"name\": \"${target}\"}" >/dev/null

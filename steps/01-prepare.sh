@@ -33,7 +33,7 @@ deploy_step_01() {
 		if ! command -v sing-box &>/dev/null; then
 			log_info "Configuring official APT source..."
 			_run mkdir -p /etc/apt/keyrings
-			curl -fsSL https://sing-box.app/gpg.key -o /etc/apt/keyrings/sagernet.asc
+			curl -fsSL --connect-timeout 5 -m 30 https://sing-box.app/gpg.key -o /etc/apt/keyrings/sagernet.asc
 			_run chmod a+r /etc/apt/keyrings/sagernet.asc
 
 			cat >/etc/apt/sources.list.d/sagernet.sources <<EOF
@@ -93,8 +93,9 @@ EOF
 
 download_bpf_object() {
 	local bpf_dest="/usr/local/share/sing-box/tproxy_tc.bpf.o"
-	local kernel_ver
-	kernel_ver=$(uname -r | cut -d. -f1-2 | tr -d '.')
+	local kernel_major kernel_minor
+	kernel_major=$(uname -r | cut -d. -f1)
+	kernel_minor=$(uname -r | cut -d. -f2)
 
 	# Remove old entry before appending (prevent duplicates)
 	_set_ebpf_mode() {
@@ -103,7 +104,7 @@ download_bpf_object() {
 	}
 
 	# Kernel version gate: CO-RE requires BTF (>= 5.10 for stable TC redirect)
-	if [ "$kernel_ver" -lt 510 ]; then
+	if [ "$kernel_major" -lt 5 ] || { [ "$kernel_major" -eq 5 ] && [ "$kernel_minor" -lt 10 ]; }; then
 		log_warn "Kernel $(uname -r) < 5.10, skipping eBPF TC mode, falling back to ip rule fwmark"
 		_set_ebpf_mode 0
 		return 0

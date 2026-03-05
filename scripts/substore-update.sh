@@ -16,7 +16,7 @@ if [ -d "$SCRIPT_DIR/../lib" ]; then
     SHARED_LIB_DIR="$SCRIPT_DIR/../lib"
 fi
 
-for _lib in globals.sh utils.sh lock.sh; do
+for _lib in globals.sh utils.sh lock.sh service.sh; do
     if [ -f "$SHARED_LIB_DIR/$_lib" ]; then
         # shellcheck source=/dev/null
         source "$SHARED_LIB_DIR/$_lib"

@@ -102,7 +102,7 @@ do_status() {
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--check) do_check; exit 0 ;;
+	--check) do_check; exit $? ;;
 	--uninstall)
 		# shellcheck disable=SC2317
 		do_uninstall
@@ -111,7 +111,7 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--rollback) do_rollback; exit 0 ;;
 	--version) echo "sing-box-stealth-deploy v${SCRIPT_VERSION}"; exit 0 ;;
-	--status) do_status; exit 0 ;;
+	--status) do_status; exit $? ;;
 	--substore) SUBSTORE_MODE=1; shift ;;
 	--upgrade) UPGRADE_MODE=1; shift ;;
 	--dry-run) DRY_RUN=1; shift ;;

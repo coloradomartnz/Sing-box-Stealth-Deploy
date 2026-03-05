@@ -37,7 +37,7 @@ deploy_step_05() {
 	log_info "Downloading MetacubexD assets from GitHub..."
 	local tmp_file="/tmp/metacubexd.tgz"
 	
-	if ! curl -Lo "$tmp_file" "$METACUBEXD_URL"; then
+	if ! curl -fsSL --connect-timeout 10 -m 120 -o "$tmp_file" "$METACUBEXD_URL"; then
 		log_warn "MetacubexD download failed, skipping dashboard (core proxy unaffected)"
 		return 0
 	fi
