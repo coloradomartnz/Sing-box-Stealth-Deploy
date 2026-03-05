@@ -148,11 +148,12 @@ deploy_step_06() {
 		   .inbounds[0].route_exclude_address[0] = $v.lan_subnet |
 		   (.outbounds[] | select(.tag == "🏠 住宅代理-中转出口") | .server) = $v.res_host |
 		   (.outbounds[] | select(.tag == "🏠 住宅代理-中转出口") | .server_port) = $v.res_port |
-		   .route.rules = (.route.rules[:2] + $cr + .route.rules[2:]) |
+		   # 注入自定义规则 (保留索引 2 之后的位置)
+		   .route.rules = (.route.rules[:3] + $cr + .route.rules[3:]) |
 		   .dns.rules = ($cd + .dns.rules) |
-		   # ND JSON may be string "null" or json from earlier steps.
+		   # ND JSON 注入
 		   (if $nd != "null" then .dns.servers = (.dns.servers[:3] + [$nd|fromjson] + .dns.servers[3:]) else . end) |
-		   # Stealth+: if residential proxy is not configured, remove related outbounds
+		   # Stealth+ 逻辑
 		   (if $has_res == "" then
 		     del(.outbounds[] | select(.tag == "🏠 住宅代理-中转出口")) |
 		     (.outbounds[] |= if .tag == "🤖 AI专用-精准分流" then .outbounds = ["🚀 节点选择", "direct"] | .default = "🚀 节点选择" else . end)

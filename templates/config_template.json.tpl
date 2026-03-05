@@ -9,7 +9,9 @@
     "cache_file": {
       "enabled": true,
       "path": "/var/lib/sing-box/cache.db",
-      "store_fakeip": true
+      "store_rdrc": true,
+      "independent_cache": true,
+      "cache_id": "sb_stealth_deploy"
     }
   },
   "log": {
@@ -19,14 +21,14 @@
     "timestamp": true
   },
   "dns": {
-    "strategy": "ipv4_only",
+    "strategy": "prefer_ipv4",
     "servers": [
       {
         "tag": "google",
-        "type": "udp",
-        "server": "8.8.8.8",
-        "server_port": 53,
-        "detour": "🤖 AI专用-精准分流"
+        "type": "https",
+        "server": "dns.google",
+        "path": "/dns-query",
+        "detour": "🚀 节点选择"
       },
       {
         "tag": "bootstrap",
@@ -48,24 +50,34 @@
         "path": "/dns-query",
         "detour": "🚀 节点选择",
         "domain_resolver": "bootstrap"
-      },
-      {
-        "tag": "fallback",
-        "type": "udp",
-        "server": "8.8.8.8",
-        "server_port": 53,
-        "detour": "🚀 节点选择"
       }
     ],
     "rules": [
-      { "rule_set": ["geosite-cn"], "server": "local" },
-      { "domain_suffix": [".cn", ".中国", ".公司", ".网络"], "server": "local" },
       {
-        "domain": ["openai.com", "anthropic.com", "claude.ai"],
+        "action": "route",
+        "server": "bootstrap",
+        "domain": [
+          "dns.alidns.com",
+          "dns.google",
+          "cloudflare-dns.com",
+          "dns.nextdns.io"
+        ]
+      },
+      {
+        "action": "route",
         "rule_set": ["geosite-openai"],
         "server": "google"
       },
-      { "rule_set": ["geosite-geolocation-!cn"], "server": "remote_cf" }
+      {
+        "action": "route",
+        "rule_set": ["geosite-cn", "geoip-cn"],
+        "server": "local"
+      },
+      {
+        "action": "route",
+        "rule_set": ["geosite-geolocation-!cn"],
+        "server": "remote_cf"
+      }
     ],
     "final": "remote_cf"
   },
@@ -126,20 +138,55 @@
     "auto_detect_interface": true,
     "default_domain_resolver": { "server": "local" },
     "rule_set": [
-      { "tag": "geosite-cn", "type": "local", "format": "binary", "path": "/var/lib/sing-box/ruleset/geosite-cn.srs" },
-      { "tag": "geosite-geolocation-!cn", "type": "local", "format": "binary", "path": "/var/lib/sing-box/ruleset/geosite-geolocation-!cn.srs" },
-      { "tag": "geosite-openai", "type": "local", "format": "binary", "path": "/var/lib/sing-box/ruleset/geosite-openai.srs" },
-      { "tag": "geoip-cn", "type": "local", "format": "binary", "path": "/var/lib/sing-box/ruleset/geoip-cn.srs" }
+      {
+        "tag": "geosite-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs",
+        "download_detour": "🚀 节点选择",
+        "update_interval": "1d"
+      },
+      {
+        "tag": "geosite-geolocation-!cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-geolocation-!cn.srs",
+        "download_detour": "🚀 节点选择",
+        "update_interval": "1d"
+      },
+      {
+        "tag": "geosite-openai",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs",
+        "download_detour": "🚀 节点选择",
+        "update_interval": "1d"
+      },
+      {
+        "tag": "geoip-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geoip/geoip-cn.srs",
+        "download_detour": "🚀 节点选择",
+        "update_interval": "1d"
+      }
     ],
     "rules": [
+      { "action": "sniff" },
       { "action": "hijack-dns", "protocol": ["dns"] },
       { "action": "hijack-dns", "port": [53] },
       {
-        "domain": ["claude.ai", "anthropic.com"],
         "rule_set": ["geosite-openai"],
         "outbound": "🤖 AI专用-精准分流"
       },
-      { "rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct" },
+      {
+        "rule_set": ["geosite-cn"],
+        "outbound": "direct"
+      },
+      {
+        "rule_set": ["geoip-cn"],
+        "outbound": "direct"
+      },
       { "outbound": "🚀 节点选择" }
     ]
   }
