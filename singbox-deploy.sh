@@ -253,6 +253,16 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 			DASHBOARD_SECRET="sing-box"
 		fi
 	fi
+
+	# Sub-Store configuration
+	if [ "$AUTO_YES" -eq 0 ]; then
+		read -r -p "Enable Sub-Store subscription management? [y/N]: " SUBSTORE_YN_INPUT
+		if [[ "$SUBSTORE_YN_INPUT" =~ ^[Yy]$ ]]; then
+			SUBSTORE_MODE=1
+			read -r -p "  Sub-Store collection name [default: MySubs]: " SUBSTORE_COLL_INPUT
+			SUBSTORE_COLLECTION_NAME=${SUBSTORE_COLL_INPUT:-MySubs}
+		fi
+	fi
 	
 	# Persist deployment config (secrets excluded)
 	mkdir -p /usr/local/etc/sing-box
