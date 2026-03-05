@@ -12,8 +12,8 @@ EBPF_TC_MODE=0
 
 # 读取部署配置
 if [ -f "/usr/local/etc/sing-box/.deployment_config" ]; then
-  # 收紧正则，禁止反引号、$()、${} 等 shell 扩展
-  if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=%+\[\]-]*"$|^[[:space:]]*$|^#' "/usr/local/etc/sing-box/.deployment_config"; then
+  # 收紧正则，禁止反引号、$() 等执行命令的扩展
+  if grep -qE '`|\$\(' "/usr/local/etc/sing-box/.deployment_config"; then
     echo "[!] 部署配置格式异常，包含非法字符，停止加载" >&2
     exit 1
   fi
