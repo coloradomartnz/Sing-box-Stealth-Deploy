@@ -2,7 +2,7 @@
   "experimental": {
     "clash_api": {
       "external_controller": "127.0.0.1:9090",
-      "external_ui": "/usr/local/etc/sing-box/ui",
+      "external_ui": "/usr/local/etc/sing-box/ui/",
       "secret": "sing-box",
       "default_mode": "rule"
     },

@@ -19,6 +19,7 @@
   /usr/local/etc/sing-box/config.json r,
   /run/sing-box/config.json r,
   /run/sing-box/ r,
+  /usr/local/etc/sing-box/ui/ r,
   /usr/local/etc/sing-box/ui/** r,
   /var/lib/sing-box/ r,
   /var/lib/sing-box/** rwk,

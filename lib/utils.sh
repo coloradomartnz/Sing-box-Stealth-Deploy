@@ -224,7 +224,7 @@ _safe_source_deployment_config() {
 	local cfg="$1"
 	[ -f "$cfg" ] || { log_error "Config file not found: $cfg"; return 1; }
 	# Reject backticks, $(), ${} and other shell expansion patterns
-	if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[A-Za-z0-9_./:, @*=%+\[\]-]*"$|^[[:space:]]*$|^#' "$cfg"; then
+	if grep -qvE '^[A-Za-z_][A-Za-z0-9_]*="[^`$]*"|^[A-Za-z_][A-Za-z0-9_]*=[0-9]+$|^[[:space:]]*$|^#' "$cfg"; then
 		log_error "Config file contains forbidden shell metacharacters: $cfg"
 		return 1
 	fi
