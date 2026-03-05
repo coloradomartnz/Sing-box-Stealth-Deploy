@@ -156,11 +156,7 @@
       { "action": "hijack-dns", "protocol": ["dns"] },
       { "action": "hijack-dns", "port": [53] },
       {
-        "rule_set": ["geosite-cn"],
-        "outbound": "direct"
-      },
-      {
-        "rule_set": ["geoip-cn"],
+        "rule_set": ["geosite-cn", "geoip-cn"],
         "outbound": "direct"
       },
       { "outbound": "🚀 节点选择" }
