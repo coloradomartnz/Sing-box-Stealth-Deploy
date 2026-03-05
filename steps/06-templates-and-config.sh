@@ -281,6 +281,8 @@ deploy_step_06() {
 
 	# 4.6 配置校验
 	log_info "配置最终校验..."
+	_run chown root:sing-box "$config_dir/config.json"
+	_run chmod 640 "$config_dir/config.json"
 	if ! validate_sing_box_config "$config_dir/config.json"; then
 		log_error "生成的配置校验不通过"
 		exit "${E_CONFIG:-11}"
