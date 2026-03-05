@@ -111,7 +111,7 @@ assert_eq "正确名称 pop 后栈为空" "0" "${#TRAP_STACK[@]}"
 # 名称不匹配时应输出 warn
 push_trap 'tag_beta' 'echo beta_trap'
 mismatch_output=$(pop_trap 'tag_gamma' 2>&1 || true)
-assert_output_contains "名称不匹配输出 warn" "不匹配" "$mismatch_output"
+assert_output_contains "名称不匹配输出 warn" "mismatch" "$mismatch_output"
 
 # ============================================================
 # 3. E-01: 语义级节点校验 (jq 表达式)
