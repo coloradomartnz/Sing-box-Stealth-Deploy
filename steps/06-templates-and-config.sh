@@ -162,9 +162,9 @@ deploy_step_06() {
 		       "outbounds": ["🏠 住宅代理-中转出口", "🚀 节点选择", "direct"],
 		       "default": "🏠 住宅代理-中转出口"
 		     }] |
-		     # 注入 AI 规则到 route (索引 1)
+		     # 注入 AI 规则到 route (索引 1，在 sniffing 之后)
+		     # 这里也建议用 logical AND 如果有对应 geoname 可用，但目前 AI 规则通常直接匹配 geosite 且走专线
 		     .route.rules = [.route.rules[0]] + [{"rule_set": ["geosite-openai"], "outbound": "🤖 AI专用-精准分流"}] + .route.rules[1:] |
-		     # 注入专用 DNS (可选，但为了保持逻辑一致，这里不强求，AI 通用解析即可)
 		     .
 		   else
 		     # 彻底清理未使用的住宅出口

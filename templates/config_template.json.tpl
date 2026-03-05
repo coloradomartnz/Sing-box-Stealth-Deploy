@@ -55,8 +55,8 @@
         ]
       },
       {
-        "action": "route",
         "rule_set": ["geosite-cn", "geoip-cn"],
+        "action": "route",
         "server": "local"
       },
       {
@@ -156,7 +156,13 @@
       { "action": "hijack-dns", "protocol": ["dns"] },
       { "action": "hijack-dns", "port": [53] },
       {
-        "rule_set": ["geosite-cn", "geoip-cn"],
+        "type": "logical",
+        "mode": "and",
+        "rules": [
+          { "rule_set": "geosite-cn" },
+          { "rule_set": "geoip-cn" }
+        ],
+        "action": "route",
         "outbound": "direct"
       },
       { "outbound": "🚀 节点选择" }
