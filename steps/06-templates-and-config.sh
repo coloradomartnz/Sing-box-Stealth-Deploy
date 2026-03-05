@@ -148,16 +148,28 @@ deploy_step_06() {
 		   .inbounds[0].route_exclude_address[0] = $v.lan_subnet |
 		   (.outbounds[] | select(.tag == "🏠 住宅代理-中转出口") | .server) = $v.res_host |
 		   (.outbounds[] | select(.tag == "🏠 住宅代理-中转出口") | .server_port) = $v.res_port |
-		   # 注入自定义规则 (保留索引 2 之后的位置)
-		   .route.rules = (.route.rules[:3] + $cr + .route.rules[3:]) |
+		   # 注入自定义规则 (保留索引 1 之后的位置，因为移除了 sniffing 之外的固定规则)
+		   .route.rules = (.route.rules[:1] + $cr + .route.rules[1:]) |
 		   .dns.rules = ($cd + .dns.rules) |
 		   # ND JSON 注入
-		   (if $nd != "null" then .dns.servers = (.dns.servers[:3] + [$nd|fromjson] + .dns.servers[3:]) else . end) |
-		   # Stealth+ 逻辑
-		   (if $has_res == "" then
-		     del(.outbounds[] | select(.tag == "🏠 住宅代理-中转出口")) |
-		     (.outbounds[] |= if .tag == "🤖 AI专用-精准分流" then .outbounds = ["🚀 节点选择", "direct"] | .default = "🚀 节点选择" else . end)
-		   else . end)
+		   (if $nd != "null" then .dns.servers = (.dns.servers[:2] + [$nd|fromjson] + .dns.servers[2:]) else . end) |
+		   # Stealth+ 逻辑: 动态注入 AI 精准分流
+		   (if $has_res == "1" then
+		     # 注入 AI Selector
+		     .outbounds += [{
+		       "type": "selector",
+		       "tag": "🤖 AI专用-精准分流",
+		       "outbounds": ["🏠 住宅代理-中转出口", "🚀 节点选择", "direct"],
+		       "default": "🏠 住宅代理-中转出口"
+		     }] |
+		     # 注入 AI 规则到 route (索引 1)
+		     .route.rules = [.route.rules[0]] + [{"rule_set": ["geosite-openai"], "outbound": "🤖 AI专用-精准分流"}] + .route.rules[1:] |
+		     # 注入专用 DNS (可选，但为了保持逻辑一致，这里不强求，AI 通用解析即可)
+		     .
+		   else
+		     # 彻底清理未使用的住宅出口
+		     del(.outbounds[] | select(.tag == "🏠 住宅代理-中转出口"))
+		   end)
 		   ' "$template_src_dir/config_template.json.tpl" | _atomic_write "$config_dir/config_template.json"
 		
 		rm -f "$vars_json"

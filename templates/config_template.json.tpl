@@ -9,9 +9,7 @@
     "cache_file": {
       "enabled": true,
       "path": "/var/lib/sing-box/cache.db",
-      "store_rdrc": true,
-      "independent_cache": true,
-      "cache_id": "sb_stealth_deploy"
+      "store_rdrc": true
     }
   },
   "log": {
@@ -23,13 +21,6 @@
   "dns": {
     "strategy": "prefer_ipv4",
     "servers": [
-      {
-        "tag": "google",
-        "type": "https",
-        "server": "dns.google",
-        "path": "/dns-query",
-        "detour": "🚀 节点选择"
-      },
       {
         "tag": "bootstrap",
         "type": "udp",
@@ -62,11 +53,6 @@
           "cloudflare-dns.com",
           "dns.nextdns.io"
         ]
-      },
-      {
-        "action": "route",
-        "rule_set": ["geosite-openai"],
-        "server": "google"
       },
       {
         "action": "route",
@@ -126,12 +112,6 @@
       "password": "",
       "detour": "🚀 节点选择"
     },
-    {
-      "type": "selector",
-      "tag": "🤖 AI专用-精准分流",
-      "outbounds": ["🏠 住宅代理-中转出口", "🚀 节点选择", "direct"],
-      "default": "🏠 住宅代理-中转出口"
-    },
     { "type": "direct", "tag": "direct" }
   ],
   "route": {
@@ -175,10 +155,6 @@
       { "action": "sniff" },
       { "action": "hijack-dns", "protocol": ["dns"] },
       { "action": "hijack-dns", "port": [53] },
-      {
-        "rule_set": ["geosite-openai"],
-        "outbound": "🤖 AI专用-精准分流"
-      },
       {
         "rule_set": ["geosite-cn"],
         "outbound": "direct"
