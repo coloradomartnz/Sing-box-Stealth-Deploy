@@ -111,13 +111,38 @@ EOF
 		sleep 3
 		if systemctl is-active --quiet sing-box; then
 			log_info "✅ sing-box 服务已启动并通过初步验证"
-			# H-2: IPv6 双栈环境下验证路由是否正确接管
+			# H-2: IPv6 双栈环境下验证路由是否正确接管 (采用更稳健的内核查表模拟)
 			if [ "${HAS_IPV6:-0}" -eq 1 ]; then
-				if ip -6 route show table main 2>/dev/null | grep -q singbox_tun; then
-					log_info "  ✓ IPv6 路由已通过 singbox_tun 接管"
+				local tun_if="singbox_tun"
+				local test_v6="2606:4700:4700::1111"
+				local ipv6_ok=0
+				
+				# 1. 基础检查：接口是否存在
+				if ip link show "$tun_if" &>/dev/null; then
+					# 2. 模拟内核查表 (ip route get 会穿透策略路由表)
+					if ip -6 route get "$test_v6" 2>/dev/null | grep -q " dev $tun_if "; then
+						ipv6_ok=1
+					else
+						# 3. 兼容性检查：如果是基于 fwmark 的策略路由，尝试带 mark 查表
+						# 提取所有指向自定义表的 mark (例如 sing-box 默认的 table 2022)
+						local custom_marks
+						custom_marks=$(ip -6 rule show | awk '/lookup [0-9]+/ {for(i=1;i<=NF;i++) if($i=="fwmark") print $(i+1)}' | sort -u)
+						for m in $custom_marks; do
+							# 去掉掩码部分
+							local m_val="${m%%/*}"
+							if ip -6 route get "$test_v6" mark "$m_val" 2>/dev/null | grep -q " dev $tun_if "; then
+								ipv6_ok=1
+								break
+							fi
+						done
+					fi
+				fi
+
+				if [ "$ipv6_ok" -eq 1 ]; then
+					log_info "  ✓ IPv6 路由验证成功 (已通过内核查表确认接管)"
 				else
-					log_warn "  ⚠ IPv6 路由未检测到 singbox_tun，可能存在 IPv6 侧漏风险"
-					log_warn "  建议检查: ip -6 route show table main"
+					log_warn "  ⚠ IPv6 路由检测失败：流量可能未进入 $tun_if"
+					log_warn "  建议检查: ip -6 rule show; ip -6 route show table all"
 				fi
 			fi
 		else
