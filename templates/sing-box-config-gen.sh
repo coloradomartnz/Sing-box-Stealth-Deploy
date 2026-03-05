@@ -29,3 +29,6 @@ jq --arg sec "$DASH_SEC" \
   else . end)
 ' /usr/local/etc/sing-box/config_template.json > /run/sing-box/config.json.tmp \
   && mv /run/sing-box/config.json.tmp /run/sing-box/config.json
+
+echo "[DEBUG] Generated /run/sing-box/config.json permissions:"
+ls -la /run/sing-box/config.json
