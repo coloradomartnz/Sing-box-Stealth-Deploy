@@ -17,6 +17,8 @@
 
   # O-11 安全加固: 仅允许读取必要的配置文件，不再开放整个目录
   /usr/local/etc/sing-box/config.json r,
+  /run/sing-box/config.json r,
+  /run/sing-box/ r,
   /usr/local/etc/sing-box/ui/** r,
   /var/lib/sing-box/ r,
   /var/lib/sing-box/** rwk,
