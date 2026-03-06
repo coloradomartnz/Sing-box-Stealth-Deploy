@@ -13,7 +13,6 @@ elif [ -f "/usr/local/etc/sing-box/lib/lock.sh" ]; then
   source "/usr/local/etc/sing-box/lib/lock.sh"
 fi
 
-# 使用示例
 if type acquire_script_lock &>/dev/null; then
   if ! acquire_script_lock /run/lock/singbox-dns-failover.lock 60; then
     echo "[WARN] 无法获取锁，跳过本次检查" >&2
@@ -36,25 +35,29 @@ STATE="$STATE_DIR/dns_failover.state"
 mkdir -p "$STATE_DIR"
 chmod 700 "$STATE_DIR"
 
-command -v jq >/dev/null
-command -v curl >/dev/null
-command -v python3 >/dev/null
+command -v jq    >/dev/null
+command -v curl  >/dev/null
 command -v base64 >/dev/null
 
 # config 不存在就退出（首次部署阶段 timer 可能先启动）
 [ -f "$CONFIG" ] || exit 0
 
-# 没有 NextDNS tag 就不启用故障切换
-if ! jq -e '.dns.servers[]? | select(.tag=="remote_nextdns")' "$CONFIG" >/dev/null 2>&1; then
+# 一次性提取所有需要的 DNS 信息，避免多次 jq 进程 fork
+_dns_info=$(jq -r '
+  (.dns.servers[] | select(.tag == "remote_nextdns") | "PATH=" + (.path // "")) // "",
+  "MODE=" + (.dns.final // "remote_nextdns"),
+  "HAS_NEXTDNS=" + (if (.dns.servers[] | select(.tag == "remote_nextdns")) then "1" else "0" end)
+' "$CONFIG" 2>/dev/null | head -3)
+
+HAS_NEXTDNS=$(echo "$_dns_info" | grep "^HAS_NEXTDNS=" | cut -d= -f2-)
+if [ "${HAS_NEXTDNS:-0}" != "1" ]; then
   exit 0
 fi
 
-# 获取 NextDNS path（形如 "/xxxxxx"）
-NEXTDNS_PATH="$(jq -r '.dns.servers[]? | select(.tag=="remote_nextdns") | .path // empty' "$CONFIG")"
+NEXTDNS_PATH=$(echo "$_dns_info" | grep "^PATH=" | cut -d= -f2-)
 [ -n "$NEXTDNS_PATH" ] || exit 0
 
-# 当前模式（dns.final）
-MODE="$(jq -r '.dns.final // empty' "$CONFIG")"
+MODE=$(echo "$_dns_info" | grep "^MODE=" | cut -d= -f2-)
 [ -n "$MODE" ] || MODE="remote_nextdns"
 
 # 计数器（成功/失败连续次数）
@@ -62,7 +65,6 @@ OK_COUNT=0
 FAIL_COUNT=0
 if [ -f "$STATE" ]; then
   read -r OK_COUNT FAIL_COUNT < "$STATE" || true
-  # ✅ 修复：校验状态并重置异常值
   if ! [[ "$OK_COUNT" =~ ^[0-9]+$ ]] || ! [[ "$FAIL_COUNT" =~ ^[0-9]+$ ]]; then
       OK_COUNT=0
       FAIL_COUNT=0
@@ -71,32 +73,25 @@ fi
 OK_COUNT="${OK_COUNT:-0}"
 FAIL_COUNT="${FAIL_COUNT:-0}"
 
-# 构造一个最小 DNS 查询（A example.com），输出 base64（标准 base64，后续 base64 -d）
-DNS_Q_B64="$(
-python3 - <<'PY'
-import os, base64, struct, random
-def qname(name: str) -> bytes:
-    out = b""
-    for part in name.split("."):
-        out += bytes([len(part)]) + part.encode()
-    return out + b"\x00"
-
-tid = random.randint(0, 65535)
-flags = 0x0100  # RD
-qdcount = 1
-header = struct.pack("!HHHHHH", tid, flags, qdcount, 0, 0, 0)
-question = qname("example.com") + struct.pack("!HH", 1, 1)  # A IN
-msg = header + question
-print(base64.b64encode(msg).decode())
-PY
-)"
+# 构造固定的 DNS wire-format 查询报文（A example.com）
+# 用 bash/openssl 替代 python3 子进程，消除 ~200ms 启动开销。
+# 报文结构: 2字节随机TxID + flags(0x0100) + qdcount(1) + 3×zero_u16
+#           + qname(7\x65\x78\x61...\x03\x63\x6f\x6d\x00) + qtype(1) + qclass(1)
+# TxID 用 $RANDOM（16-bit，满足要求）
+_build_dns_query() {
+  local txid_hi=$(( (RANDOM & 0xFF) ))
+  local txid_lo=$(( (RANDOM & 0xFF) ))
+  # printf each byte as \xNN then base64-encode
+  printf '\x%02x\x%02x\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x07example\x03com\x00\x00\x01\x00\x01' \
+    "$txid_hi" "$txid_lo" | base64 -w0
+}
+DNS_Q_B64=$(_build_dns_query)
 
 doh_post_ok() {
-  # 参数：URL
   local url="$1"
   local code
   code="$(
-    (printf '%s' "$DNS_Q_B64" | base64 -d 2>/dev/null || printf '%s' "$DNS_Q_B64" | base64 --decode) | \
+    printf '%s' "$DNS_Q_B64" | base64 -d 2>/dev/null | \
       timeout 8s curl -sS -o /dev/null \
         -w '%{http_code}' \
         -X POST \
@@ -105,7 +100,6 @@ doh_post_ok() {
         --data-binary @- \
         "$url" || true
   )"
-  # 只认 200，避免把 400/404 当作“可用”
   [ "$code" = "200" ]
 }
 
@@ -139,7 +133,6 @@ if id -u sing-box >/dev/null 2>&1; then
 fi
 
 patch_dns_tag_in_file() {
-  # 替换 dns.final，并替换 dns.rules 里 server 的 tag
   local file="$1"
   local from="$2"
   local to="$3"
@@ -154,7 +147,6 @@ patch_dns_tag_in_file() {
   ' "$file" > "$tmp"
 
   jq empty "$tmp" >/dev/null
-  # 审计修复(E-02): 确保数据落盘后再原子替换，防止断电导致空文件
   sync "$tmp" 2>/dev/null || sync
   mv "$tmp" "$file"
   if id -u sing-box >/dev/null 2>&1; then
@@ -173,7 +165,6 @@ rollback_and_restart() {
 }
 
 switch_to() {
-  # target: remote_cf 或 remote_nextdns
   local target="$1"
   local ts backup_cfg backup_tpl
   ts="$(date +%Y%m%d-%H%M%S)"
@@ -183,7 +174,7 @@ switch_to() {
   cp -f "$CONFIG" "$backup_cfg"
   [ -f "$TEMPLATE" ] && cp -f "$TEMPLATE" "$backup_tpl"
 
-  # P2 修复：仅保留最近 3 份 pre-switch 备份，防止磁盘被无限积累的备份文件写满
+  # 仅保留最近 3 份 pre-switch 备份，防止磁盘被无限积累的备份文件写满
   find "$(dirname "$CONFIG")" -maxdepth 1 -name "$(basename "$CONFIG").pre-dns-switch.*" \
     -type f -printf '%T@\t%p\n' 2>/dev/null | sort -t$'\t' -k1 -rn |
     tail -n +4 | cut -f2- | xargs rm -f 2>/dev/null || true
@@ -193,15 +184,12 @@ switch_to() {
 
   if [ "$target" = "remote_cf" ]; then
     patch_dns_tag_in_file "$CONFIG"   "remote_nextdns" "remote_cf"
-    # 同时修改模板文件，确保下次 sing-box-subscribe 重新生成时保留切换后的 DNS 选择
     patch_dns_tag_in_file "$TEMPLATE" "remote_nextdns" "remote_cf"
   else
     patch_dns_tag_in_file "$CONFIG"   "remote_cf" "remote_nextdns"
-    # 同时修改模板文件，确保下次 sing-box-subscribe 重新生成时保留切换后的 DNS 选择
     patch_dns_tag_in_file "$TEMPLATE" "remote_cf" "remote_nextdns"
   fi
 
-  # 门禁 + 重启，失败则回滚
   if ! "${SING_BOX_BIN:-/usr/bin/sing-box}" check -c "$CONFIG" >/dev/null; then
     rollback_and_restart "$backup_cfg"
     exit 0
@@ -213,7 +201,7 @@ switch_to() {
   fi
 }
 
-# 决策：失败切 CF；恢复切回 NextDNS
+# 重新从配置文件读取当前模式（patch 可能已修改）
 MODE="$(jq -r '.dns.final // "remote_nextdns"' "$CONFIG" 2>/dev/null || echo remote_nextdns)"
 
 if [ "$MODE" = "remote_nextdns" ] && [ "$FAIL_COUNT" -ge 2 ] && [ "$CF_OK" -eq 1 ]; then

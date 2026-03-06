@@ -74,14 +74,11 @@ declare -a TRAP_STACK=()
 push_trap() {
 	local name="$1"
 	local cmd="$2"
-	# Save current ERR trap command
+	# Extract current ERR trap command using awk (handles single quotes in content better than sed)
 	local current_trap
-	current_trap=$(trap -p ERR)
+	current_trap=$(trap -p ERR 2>/dev/null | awk -F"'" 'NF>=2{print $2}' || true)
 
-	# Extract command from "trap -- 'command' ERR" wrapper
-	if [ -n "$current_trap" ]; then
-		current_trap=$(echo "$current_trap" | sed -E "s/^trap -- '(.*)' ERR$/\1/")
-	else
+	if [ -z "$current_trap" ]; then
 		current_trap="__EMPTY__"
 	fi
 
@@ -148,12 +145,12 @@ _array_contains() {
 	return 1
 }
 
-log_info() { echo -e "${GREEN}[INFO]${NC} [$(date +'%H:%M:%S')] $*"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} [$(date +'%H:%M:%S')] $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} [$(date +'%H:%M:%S')] $*"; }
-log_step() {
+log_info()  { printf "${GREEN}[INFO]${NC}  [%(%H:%M:%S)T] %s\n"  -1 "$*"; }
+log_warn()  { printf "${YELLOW}[WARN]${NC}  [%(%H:%M:%S)T] %s\n"  -1 "$*"; }
+log_error() { printf "${RED}[ERROR]${NC} [%(%H:%M:%S)T] %s\n" -1 "$*"; }
+log_step()  {
 	CURRENT_STEP="$*"
-	echo -e "${BLUE}[STEP]${NC} [$(date +'%H:%M:%S')] $*"
+	printf "${BLUE}[STEP]${NC}  [%(%H:%M:%S)T] %s\n" -1 "$*"
 }
 
 _run() {

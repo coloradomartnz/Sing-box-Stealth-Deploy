@@ -37,7 +37,7 @@ do_health_check() {
     FAILED=1
   fi
 
-  # 3. 检查外网连通性
+  # 3. 检查外网连通性（并行探测，最坏延迟从 24s 降至 8s）
   local PROXY_TARGETS=(
     "https://www.google.com"
     "https://1.1.1.1"
@@ -45,11 +45,24 @@ do_health_check() {
   )
 
   local PROXY_OK=0
+  local _pids=() _tmpfiles=()
   for target in "${PROXY_TARGETS[@]}"; do
-    if timeout 8s curl -sf -m 7 "$target" >/dev/null 2>&1; then
+    local _t
+    _t=$(mktemp /tmp/hc_probe.XXXXXX)
+    _tmpfiles+=("$_t")
+    ( timeout 8s curl -sf -m 7 "$target" >/dev/null 2>&1 && echo "ok" > "$_t" ) &
+    _pids+=($!)
+  done
+
+  for _pid in "${_pids[@]}"; do
+    wait "$_pid" 2>/dev/null || true
+  done
+
+  for _t in "${_tmpfiles[@]}"; do
+    if [ -f "$_t" ] && [ "$(cat "$_t" 2>/dev/null)" = "ok" ]; then
       PROXY_OK=1
-      break
     fi
+    rm -f "$_t"
   done
 
   if [ "$PROXY_OK" -eq 0 ]; then

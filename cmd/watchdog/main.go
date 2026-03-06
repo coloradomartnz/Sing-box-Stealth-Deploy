@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/rand/v2"
+	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -26,25 +27,41 @@ type Config struct {
 }
 
 type Checker struct {
-	cfg Config
+	cfg    Config
+	client *http.Client
 }
 
 func NewChecker(cfg Config) *Checker {
-	return &Checker{cfg: cfg}
+	return &Checker{
+		cfg: cfg,
+		client: &http.Client{
+			Timeout: 7 * time.Second,
+			// Do not follow redirects; a redirect response still proves reachability.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+	}
 }
 
-// Check verifies if the proxies are reachable. For now, we simulate a simple connectivity check.
+// Check verifies proxy reachability via net/http HEAD requests.
+// Returns nil on the first reachable target.
 func (c *Checker) Check(ctx context.Context) error {
-	// Normally we would iterate over c.cfg.ProxyTargets and attempt requests via sing-box local socks/http port
-	// but to make it resilient, we shell out to curl targeting multiple endpoints exactly as bash did.
-	// Since bash did: curl -sf -m 7 "target"
 	for _, target := range c.cfg.ProxyTargets {
-		cmd := exec.CommandContext(ctx, "curl", "-sf", "-m", "7", target)
-		if err := cmd.Run(); err == nil {
+		req, err := http.NewRequestWithContext(ctx, http.MethodHead, target, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := c.client.Do(req)
+		if err == nil {
+			resp.Body.Close()
 			return nil // Success on first reachable target
 		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 	}
-	return os.ErrDeadlineExceeded // All failed
+	return fmt.Errorf("all proxy targets unreachable")
 }
 
 func main() {
@@ -79,7 +96,8 @@ func main() {
 	slog.Info("Watchdog 2.0 Go Sidecar Started", "interval", cfg.CheckInterval, "threshold", cfg.CBThreshold)
 
 	for {
-		if cb.State() == StateOpen {
+		switch cb.State() {
+		case StateOpen:
 			slog.Warn("circuit breaker OPEN, skipping proactive check", "wait", cfg.CBResetTimeout)
 			select {
 			case <-ctx.Done():
@@ -88,6 +106,8 @@ func main() {
 			case <-time.After(cfg.CBResetTimeout):
 			}
 			continue
+		case StateHalfOpen:
+			slog.Info("circuit breaker HALF-OPEN, running probe check")
 		}
 
 		checkCtx, checkCancel := context.WithTimeout(ctx, 15*time.Second)
@@ -148,8 +168,8 @@ func calculateBackoffWithJitter(failures int, cfg Config) time.Duration {
 }
 
 func switchToFallback(ctx context.Context) {
-	// P1 修复：从 Systemd Credentials 目录读取 secret（LoadCredential 注入）；
-	//          回退到 DASHBOARD_SECRET 环境变量（兼容旧部署）。
+	// 从 Systemd Credentials 目录读取 secret（LoadCredential 注入）；
+	// 回退到 DASHBOARD_SECRET 环境变量（兼容旧部署）。
 	secret := ""
 	if credsDir := os.Getenv("CREDENTIALS_DIRECTORY"); credsDir != "" {
 		if data, err := os.ReadFile(filepath.Join(credsDir, "dash_secret")); err == nil {
@@ -168,8 +188,6 @@ func switchToFallback(ctx context.Context) {
 		port = "9090"
 	}
 
-	// P0 修复：代理组 tag 和回退节点名均可通过环境变量覆盖；
-	//          默认值与 singbox_build_region_groups.py 生成的 tag 一致。
 	proxyGroup := os.Getenv("PROXY_GROUP_TAG")
 	if proxyGroup == "" {
 		proxyGroup = "🚀 节点选择"
@@ -182,15 +200,27 @@ func switchToFallback(ctx context.Context) {
 	apiURL := "http://127.0.0.1:" + port + "/proxies/" + url.PathEscape(proxyGroup)
 	body := fmt.Sprintf(`{"name":%q}`, fallbackNode)
 
-	cmd := exec.CommandContext(ctx, "curl", "-sf", "-X", "PUT",
-		"-H", "Authorization: Bearer "+secret,
-		"-H", "Content-Type: application/json",
-		"-d", body,
-		apiURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, apiURL,
+		strings.NewReader(body))
+	if err != nil {
+		slog.Error("Failed to build API request", "error", err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+secret)
+	req.Header.Set("Content-Type", "application/json")
 
-	if err := cmd.Run(); err != nil {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
 		slog.Error("Failed to trigger API fallback", "error", err, "group", proxyGroup, "node", fallbackNode)
-	} else {
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		slog.Info("Successfully triggered fallback node selection.", "group", proxyGroup, "node", fallbackNode)
+	} else {
+		slog.Error("API fallback returned non-2xx", "status", resp.StatusCode, "group", proxyGroup)
 	}
 }

@@ -31,8 +31,10 @@ PY="${SB_SUB}/venv/bin/python"
 
 # 2. 获取锁
 # 使用与部署相同的锁，避免冲突
+# acquire_deploy_lock 内部已通过 _lock_dispatch_cleanup 注册 EXIT/INT/TERM 清理；
+# 此处只需注册 cleanup()（敏感变量清理），避免与锁清理重复注册。
 acquire_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID" 60 || exit "${E_LOCK:-12}"
-trap 'cleanup_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID"; cleanup' EXIT INT TERM
+trap 'cleanup' EXIT INT TERM
 
 # validate_sing_box_config 已在 lib/utils.sh 中定义
 

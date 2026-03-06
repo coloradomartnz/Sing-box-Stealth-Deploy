@@ -11,6 +11,12 @@ providers.json
 venv/
 .venv/
 __pycache__/
+*.pyc
+*.pyo
+
+# Go build output
+cmd/watchdog/watchdog
+singbox-watchdog
 
 # System/IDE
 .DS_Store

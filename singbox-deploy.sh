@@ -162,8 +162,13 @@ collect_subscription_urls() {
 			echo  # -s suppresses newline
 			[ -z "$url" ] && break
 			AIRPORT_URLS+=("$url")
-			# Extract tag from URL name parameter
-			tag=$(echo "$url" | sed -E 's/.*[?&]name=([^&]+).*/\1/' | head -n1)
+			# Extract tag from URL name parameter using bash native regex (no fork)
+			# Pattern stored in variable to avoid bash parsing issues with & inside [[ =~ ]]
+			tag=""
+			_tag_re='[?&]name=([^&]+)'
+			if [[ "$url" =~ $_tag_re ]]; then
+				tag="${BASH_REMATCH[1]}"
+			fi
 			AIRPORT_TAGS+=("${tag:-sub_$(( ${#AIRPORT_URLS[@]} ))}")
 			log_info "  OK added subscription #${#AIRPORT_URLS[@]}"
 		done
@@ -185,7 +190,11 @@ collect_subscription_urls() {
 		if [ -n "${AIRPORT_URLS_STR:-}" ]; then
 			read -r -a AIRPORT_URLS <<< "$AIRPORT_URLS_STR"
 			for url in "${AIRPORT_URLS[@]}"; do
-				tag=$(echo "$url" | sed -E 's/.*[\?&]name=([^&]+).*/\1/' | head -n1)
+				tag=""
+				_tag_re='[?&]name=([^&]+)'
+				if [[ "$url" =~ $_tag_re ]]; then
+					tag="${BASH_REMATCH[1]}"
+				fi
 				AIRPORT_TAGS+=("${tag:-sub_$(( ${#AIRPORT_TAGS[@]} + 1 ))}")
 			done
 		fi

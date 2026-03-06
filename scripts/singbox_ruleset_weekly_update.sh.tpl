@@ -5,11 +5,25 @@ log_info(){ echo "[INFO] $*"; }
 log_warn(){ echo "[WARN] $*" >&2; }
 log_error(){ echo "[ERROR] $*" >&2; }
 
-LOCK_FILE="/run/lock/sing-box-update.lock"
-exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
-  echo "[WARN] 另一个 sing-box 更新任务正在运行，当前实例退出 (Another update task is running, exiting)" >&2
-  exit 0
+# 使用共享锁库（含 stale-lock 检测），与其他脚本保持一致
+_SHARED_LOCK="/usr/local/etc/sing-box/lib/lock.sh"
+if [ -f "$_SHARED_LOCK" ]; then
+  # shellcheck source=/dev/null
+  source "$_SHARED_LOCK"
+fi
+
+if type acquire_script_lock &>/dev/null; then
+  if ! acquire_script_lock /run/lock/sing-box-update.lock 60; then
+    echo "[WARN] 另一个 sing-box 更新任务正在运行，当前实例退出 (Another update task is running, exiting)" >&2
+    exit 0
+  fi
+else
+  # Fallback: 原始 flock
+  exec 200>/run/lock/sing-box-update.lock
+  if ! flock -n 200; then
+    echo "[WARN] 另一个 sing-box 更新任务正在运行，当前实例退出 (Another update task is running, exiting)" >&2
+    exit 0
+  fi
 fi
 
 RULESET_DIR="/var/lib/sing-box/ruleset"

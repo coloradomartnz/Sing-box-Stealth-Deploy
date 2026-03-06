@@ -6,9 +6,11 @@ ConditionPathExists=/usr/local/etc/sing-box/.deployment_config
 
 [Service]
 Type=simple
-EnvironmentFile=/usr/local/etc/sing-box/.deployment_config
-# P1 修复：secret 已从 deployment_config 迁移至 .credentials；
-#          通过 LoadCredential 安全注入，Go 代码从 CREDENTIALS_DIRECTORY/dash_secret 读取。
+# 仅注入 watchdog 实际使用的变量，不加载整个 deployment_config（减少进程环境暴露面）
+# DASHBOARD_PORT 从 deployment_config 中提取单行以避免全量导入
+ExecStartPre=/bin/bash -c 'port=$(grep "^DASHBOARD_PORT=" /usr/local/etc/sing-box/.deployment_config 2>/dev/null | cut -d= -f2 | tr -d "\""); echo "DASHBOARD_PORT=${port:-9090}" > /run/singbox-watchdog.env'
+EnvironmentFile=/run/singbox-watchdog.env
+# secret 通过 LoadCredential 安全注入，Go 代码从 CREDENTIALS_DIRECTORY/dash_secret 读取
 LoadCredential=dash_secret:/usr/local/etc/sing-box/.credentials/dash_secret
 # 代理组名和回退节点名与 singbox_build_region_groups.py 保持一致
 Environment=PROXY_GROUP_TAG=🚀 节点选择

@@ -49,42 +49,62 @@ deploy_step_06() {
 	fi
 
 	# Process custom routing rules (JQ-native generation)
+	# Each list file is read exactly once; both route and DNS rule objects are
+	# produced in a single pass, halving file I/O and bash loop iterations.
 	log_info "Processing custom routing rules..."
-	
-	_gen_custom_rules_jq() {
+
+	# _load_domains_from_file <file> → prints one domain per line (strips comments/blanks)
+	_load_domains_from_file() {
 		local list_file="$1"
-		local outbound="$2" # "direct" or "proxy" (or "local" for DNS)
-		local is_dns="$3"   # 1 for DNS, 0 for Route
-		
-		if [ ! -f "$list_file" ]; then
-			echo "{}"
+		[ -f "$list_file" ] || return 0
+		while IFS= read -r line || [ -n "$line" ]; do
+			# Strip inline comments and surrounding whitespace via parameter expansion
+			line="${line%%#*}"
+			line="${line#"${line%%[! ]*}"}"   # ltrim
+			line="${line%"${line##*[! ]}"}"   # rtrim
+			[ -n "$line" ] && printf '%s\n' "$line"
+		done < "$list_file"
+	}
+
+	# _make_rule_pair <route_outbound> <dns_server> <domain...>
+	# Prints two JSON objects separated by newline: route rule, dns rule
+	_make_rule_pair() {
+		local route_out="$1" dns_srv="$2"
+		shift 2
+		if [ $# -eq 0 ]; then
+			printf '{}\n{}\n'
 			return
 		fi
-		
-		local domains=()
-		while IFS= read -r line || [ -n "$line" ]; do
-			line=$(echo "$line" | sed 's/#.*//' | xargs)
-			[ -z "$line" ] && continue
-			domains+=("$line")
-		done < "$list_file"
-		
-		if [ ${#domains[@]} -gt 0 ]; then
-			if [ "$is_dns" -eq 1 ]; then
-				jq -n --arg out "$outbound" '{domain: $ARGS.positional, server: $out}' --args "${domains[@]}"
-			else
-				jq -n --arg out "$outbound" '{domain: $ARGS.positional, outbound: $out}' --args "${domains[@]}"
-			fi
-		else
-			echo "{}"
-		fi
+		jq -n --arg ro "$route_out" --arg ds "$dns_srv" \
+		   '{domain: $ARGS.positional, outbound: $ro}
+		    ,{domain: $ARGS.positional, server: $ds}' \
+		   --args -- "$@"
 	}
 
 	local cr_direct cr_proxy cd_direct cd_proxy
-	cr_direct=$(_gen_custom_rules_jq "/usr/local/etc/sing-box/direct_list.txt" "direct" 0)
-	cr_proxy=$(_gen_custom_rules_jq "/usr/local/etc/sing-box/proxy_list.txt" "🚀 节点选择" 0)
-	cd_direct=$(_gen_custom_rules_jq "/usr/local/etc/sing-box/direct_list.txt" "local" 1)
-	cd_proxy=$(_gen_custom_rules_jq "/usr/local/etc/sing-box/proxy_list.txt" "${REMOTE_MAIN_TAG:-remote_cf}" 1)
-	
+
+	# Read direct_list.txt once, produce both route and dns objects
+	mapfile -t _direct_domains < <(_load_domains_from_file "/usr/local/etc/sing-box/direct_list.txt")
+	if [ ${#_direct_domains[@]} -gt 0 ]; then
+		_pair=$(_make_rule_pair "direct" "local" "${_direct_domains[@]}")
+		cr_direct=$(printf '%s' "$_pair" | head -1)
+		cd_direct=$(printf '%s' "$_pair" | tail -1)
+	else
+		cr_direct="{}" ; cd_direct="{}"
+	fi
+	unset _direct_domains _pair
+
+	# Read proxy_list.txt once, produce both route and dns objects
+	mapfile -t _proxy_domains < <(_load_domains_from_file "/usr/local/etc/sing-box/proxy_list.txt")
+	if [ ${#_proxy_domains[@]} -gt 0 ]; then
+		_pair=$(_make_rule_pair "🚀 节点选择" "${REMOTE_MAIN_TAG:-remote_cf}" "${_proxy_domains[@]}")
+		cr_proxy=$(printf '%s' "$_pair" | head -1)
+		cd_proxy=$(printf '%s' "$_pair" | tail -1)
+	else
+		cr_proxy="{}" ; cd_proxy="{}"
+	fi
+	unset _proxy_domains _pair
+
 	local cr_arr cd_arr nd_json
 	cr_arr=$(jq -s 'map(select(length > 0))' <<< "$cr_direct $cr_proxy")
 	cd_arr=$(jq -s 'map(select(length > 0))' <<< "$cd_direct $cd_proxy")

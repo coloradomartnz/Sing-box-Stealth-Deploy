@@ -101,11 +101,20 @@ EOF
 	fi
 
 	# 5.7 权限修复与启动
+	# 精确修复已知文件/目录权限，避免 chown -R 递归扫描整棵目录树
 	log_info "修复运行目录权限并启动服务..."
-	_run chown -R sing-box:sing-box /var/lib/sing-box
-	_run chown -R root:sing-box /usr/local/etc/sing-box
+	_run chown sing-box:sing-box /var/lib/sing-box
+	_run chown sing-box:sing-box /var/lib/sing-box/ruleset
+	for _f in /var/lib/sing-box/ruleset/*.srs; do
+		[ -f "$_f" ] && chown sing-box:sing-box "$_f" 2>/dev/null || true
+	done
+	_run chown root:sing-box /usr/local/etc/sing-box
 	_run chmod 750 /usr/local/etc/sing-box
-	_run chmod 640 /usr/local/etc/sing-box/config.json /usr/local/etc/sing-box/config_template.json
+	for _f in config.json config_template.json providers.json; do
+		[ -f "/usr/local/etc/sing-box/$_f" ] && \
+			chown root:sing-box "/usr/local/etc/sing-box/$_f" && \
+			chmod 640 "/usr/local/etc/sing-box/$_f" || true
+	done
 	
 	if [ "${DRY_RUN:-0}" -eq 0 ]; then
 		_run systemctl restart sing-box

@@ -74,27 +74,60 @@ acquire_lock() {
 	_LOCK_CLEANUP_FDS+=("$lock_fd")
 
 	# 只在第一次注册 trap（后续调用只是往数组追加）
+	# 使用命名函数引用而非字符串拼接，避免 trap -p | sed 解析含单引号内容时失效
 	if [ "${#_LOCK_CLEANUP_PID_FILES[@]}" -eq 1 ]; then
-		# 保存已有的 EXIT trap 并链接
-		local _existing_exit_trap
-		_existing_exit_trap=$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/" 2>/dev/null || echo "")
-
-		if [ -n "$_existing_exit_trap" ] && [ "$_existing_exit_trap" != "trap -p EXIT" ]; then
-			# shellcheck disable=SC2064
-			trap "_lock_cleanup_handler; $_existing_exit_trap" EXIT
-		else
-			trap '_lock_cleanup_handler' EXIT
+		# 将锁清理注册到全局 hook 数组；统一由 _lock_dispatch_cleanup 调用，
+		# 从而无需解析已有 trap 字符串。
+		if ! declare -p _GLOBAL_EXIT_HOOKS &>/dev/null 2>&1; then
+			declare -ga _GLOBAL_EXIT_HOOKS=()
+		fi
+		# 避免重复注册
+		if [[ ! " ${_GLOBAL_EXIT_HOOKS[*]:-} " =~ " _lock_cleanup_handler " ]]; then
+			_GLOBAL_EXIT_HOOKS+=("_lock_cleanup_handler")
 		fi
 
-		# P1 修复：同样链接已有的 INT trap，防止 Ctrl+C 时 _cleanup_all 被丢弃
-		local _existing_int_trap
-		_existing_int_trap=$(trap -p INT | sed -E "s/^trap -- '(.*)' INT$/\1/" 2>/dev/null || echo "")
+		# _lock_dispatch_cleanup 遍历所有已注册的 hook，并保留幂等性
+		_lock_dispatch_cleanup() {
+			local _hook
+			for _hook in "${_GLOBAL_EXIT_HOOKS[@]:-}"; do
+				"$_hook" 2>/dev/null || true
+			done
+		}
 
-		if [ -n "$_existing_int_trap" ] && [ "$_existing_int_trap" != "trap -p INT" ]; then
-			# shellcheck disable=SC2064
-			trap "_lock_cleanup_handler; $_existing_int_trap" INT TERM
+		# 链接：若已有 EXIT trap 包含其他函数，则追加调用；否则直接注册
+		# 使用 bash 内置 BASH_COMMAND 无关的方式：检测 trap -p 是否已含 _lock_dispatch_cleanup
+		local _current_exit
+		_current_exit=$(trap -p EXIT 2>/dev/null || true)
+		if [[ "$_current_exit" == *"_lock_dispatch_cleanup"* ]]; then
+			: # already chained, nothing to do
+		elif [ -n "$_current_exit" ]; then
+			# Prepend our dispatcher before the existing handler (safe: function call, no string eval)
+			# Extract existing command via printf/eval-safe method
+			local _existing_fn
+			_existing_fn=$(trap -p EXIT | awk -F"'" 'NF>=2{print $2}' 2>/dev/null || true)
+			if [ -n "$_existing_fn" ] && [[ ! "$_existing_fn" =~ _lock_dispatch_cleanup ]]; then
+				# Register existing handler into hook array too, then set single dispatcher
+				if [[ ! " ${_GLOBAL_EXIT_HOOKS[*]:-} " =~ " $_existing_fn " ]]; then
+					_GLOBAL_EXIT_HOOKS+=("$_existing_fn")
+				fi
+			fi
+			trap '_lock_dispatch_cleanup' EXIT
 		else
-			trap '_lock_cleanup_handler' INT TERM
+			trap '_lock_dispatch_cleanup' EXIT
+		fi
+
+		# INT/TERM: same dispatcher
+		local _current_int
+		_current_int=$(trap -p INT 2>/dev/null || true)
+		if [[ "$_current_int" != *"_lock_dispatch_cleanup"* ]]; then
+			local _existing_int_fn
+			_existing_int_fn=$(trap -p INT | awk -F"'" 'NF>=2{print $2}' 2>/dev/null || true)
+			if [ -n "$_existing_int_fn" ] && [[ ! "$_existing_int_fn" =~ _lock_dispatch_cleanup ]]; then
+				if [[ ! " ${_GLOBAL_EXIT_HOOKS[*]:-} " =~ " $_existing_int_fn " ]]; then
+					_GLOBAL_EXIT_HOOKS+=("$_existing_int_fn")
+				fi
+			fi
+			trap '_lock_dispatch_cleanup' INT TERM
 		fi
 	fi
 
