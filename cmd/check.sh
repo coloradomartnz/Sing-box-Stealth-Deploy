@@ -89,7 +89,7 @@ do_check() {
 
 	# 4. systemd 服务状态
 	echo "[5/10] systemd 服务状态..."
-	for svc in sing-box.service singbox-healthcheck.timer singbox-ruleset-weekly-update.timer singbox-backup.timer singbox-residential-watchdog.service; do
+	for svc in sing-box.service singbox-watchdog.service singbox-healthcheck.timer singbox-ruleset-weekly-update.timer singbox-dns-failover.timer singbox-backup.timer singbox-residential-watchdog.service; do
 		if systemctl is-active "$svc" &>/dev/null 2>&1; then
 			echo "  ✓ $svc: active"
 		elif systemctl is-enabled "$svc" &>/dev/null 2>&1; then

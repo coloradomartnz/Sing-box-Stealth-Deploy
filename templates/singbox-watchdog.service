@@ -7,6 +7,12 @@ ConditionPathExists=/usr/local/etc/sing-box/.deployment_config
 [Service]
 Type=simple
 EnvironmentFile=/usr/local/etc/sing-box/.deployment_config
+# P1 修复：secret 已从 deployment_config 迁移至 .credentials；
+#          通过 LoadCredential 安全注入，Go 代码从 CREDENTIALS_DIRECTORY/dash_secret 读取。
+LoadCredential=dash_secret:/usr/local/etc/sing-box/.credentials/dash_secret
+# 代理组名和回退节点名与 singbox_build_region_groups.py 保持一致
+Environment=PROXY_GROUP_TAG=🚀 节点选择
+Environment=WATCHDOG_FALLBACK_NODE=🌏 全局自动
 ExecStart=/usr/local/bin/singbox-watchdog
 Restart=always
 RestartSec=5

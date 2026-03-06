@@ -1,0 +1,10 @@
+[Unit]
+Description=sing-box Health Check
+After=sing-box.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/singbox_health_check.sh
+StandardOutput=journal
+StandardError=journal

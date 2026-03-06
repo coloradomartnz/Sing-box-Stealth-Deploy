@@ -183,6 +183,14 @@ switch_to() {
   cp -f "$CONFIG" "$backup_cfg"
   [ -f "$TEMPLATE" ] && cp -f "$TEMPLATE" "$backup_tpl"
 
+  # P2 修复：仅保留最近 3 份 pre-switch 备份，防止磁盘被无限积累的备份文件写满
+  find "$(dirname "$CONFIG")" -maxdepth 1 -name "$(basename "$CONFIG").pre-dns-switch.*" \
+    -type f -printf '%T@\t%p\n' 2>/dev/null | sort -t$'\t' -k1 -rn |
+    tail -n +4 | cut -f2- | xargs rm -f 2>/dev/null || true
+  find "$(dirname "$TEMPLATE")" -maxdepth 1 -name "$(basename "$TEMPLATE").pre-dns-switch.*" \
+    -type f -printf '%T@\t%p\n' 2>/dev/null | sort -t$'\t' -k1 -rn |
+    tail -n +4 | cut -f2- | xargs rm -f 2>/dev/null || true
+
   if [ "$target" = "remote_cf" ]; then
     patch_dns_tag_in_file "$CONFIG"   "remote_nextdns" "remote_cf"
     # 同时修改模板文件，确保下次 sing-box-subscribe 重新生成时保留切换后的 DNS 选择

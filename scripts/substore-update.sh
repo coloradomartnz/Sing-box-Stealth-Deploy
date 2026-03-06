@@ -119,6 +119,17 @@ if [ -f "/usr/local/bin/singbox_build_region_groups.py" ]; then
     DEFAULT_REGION="${DEFAULT_REGION:-HK}" python3 /usr/local/bin/singbox_build_region_groups.py "$WORK_DIR/config.json"
 fi
 
+# 5.5 P2 修复：语义门禁——确保生成的配置含有效代理节点（与 step 06 E-01 一致）
+_ss_outbound_count=$(jq '[.outbounds[] | select(
+    .type != "direct" and .type != "block" and .type != "dns" and
+    .type != "selector" and .type != "urltest"
+)] | length' "$WORK_DIR/config.json" 2>/dev/null || echo "0")
+if [ "$_ss_outbound_count" -eq 0 ]; then
+    log_error "Sub-Store 更新后配置不含任何有效代理节点，中止热更新（请检查集合内订阅是否有效）"
+    exit "${E_CONFIG:-11}"
+fi
+log_info "  ✓ 检测到 $_ss_outbound_count 个有效代理节点"
+
 # 6. 配置预检与热更新 (使用 lib/service.sh 提供的安全重载函数)
 if type safe_reload_sing_box &>/dev/null; then
     safe_reload_sing_box "$WORK_DIR/config.json"

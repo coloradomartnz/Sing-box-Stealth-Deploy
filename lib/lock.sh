@@ -75,7 +75,7 @@ acquire_lock() {
 
 	# 只在第一次注册 trap（后续调用只是往数组追加）
 	if [ "${#_LOCK_CLEANUP_PID_FILES[@]}" -eq 1 ]; then
-		# 保存已有的 EXIT trap
+		# 保存已有的 EXIT trap 并链接
 		local _existing_exit_trap
 		_existing_exit_trap=$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/" 2>/dev/null || echo "")
 
@@ -85,7 +85,17 @@ acquire_lock() {
 		else
 			trap '_lock_cleanup_handler' EXIT
 		fi
-		trap '_lock_cleanup_handler' INT TERM
+
+		# P1 修复：同样链接已有的 INT trap，防止 Ctrl+C 时 _cleanup_all 被丢弃
+		local _existing_int_trap
+		_existing_int_trap=$(trap -p INT | sed -E "s/^trap -- '(.*)' INT$/\1/" 2>/dev/null || echo "")
+
+		if [ -n "$_existing_int_trap" ] && [ "$_existing_int_trap" != "trap -p INT" ]; then
+			# shellcheck disable=SC2064
+			trap "_lock_cleanup_handler; $_existing_int_trap" INT TERM
+		else
+			trap '_lock_cleanup_handler' INT TERM
+		fi
 	fi
 
 	return 0

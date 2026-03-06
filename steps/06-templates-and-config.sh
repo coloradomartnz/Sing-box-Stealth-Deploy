@@ -215,6 +215,10 @@ deploy_step_06() {
 			/usr/local/bin/generate_providers.sh "$config_dir/config_template.json" "$urls_csv" "$tags_csv" "$config_dir/providers.json"
 		elif [ -f "$(dirname "$0")/scripts/generate_providers.sh" ]; then
 			"$(dirname "$0")/scripts/generate_providers.sh" "$config_dir/config_template.json" "$urls_csv" "$tags_csv" "$config_dir/providers.json"
+		else
+			# P1 修复：两个路径均不存在时明确报错，而非静默跳过导致下游 install 失败
+			log_error "generate_providers.sh 未找到（已检查 /usr/local/bin/ 和 $(dirname "$0")/scripts/）"
+			exit "${E_DEPENDENCY:-14}"
 		fi
 	fi
 

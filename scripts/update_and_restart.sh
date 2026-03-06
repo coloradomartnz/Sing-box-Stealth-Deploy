@@ -65,13 +65,25 @@ create_rollback_point "/usr/local/etc/sing-box"
 
 echo "[*] 3) 更新订阅节点..."
 if [ -d "$SB_SUB" ]; then
+	# P0 修复：初始部署后 $SB_SUB/providers.json 已被清理；
+	# 必须在每次运行前从配置目录重新复制，运行后立即删除（与 step 06 逻辑一致）。
+	if [ -f "${CONFIG_DIR}/providers.json" ]; then
+		install -m 640 "${CONFIG_DIR}/providers.json" "$SB_SUB/providers.json"
+	else
+		log_error "providers.json 不存在: ${CONFIG_DIR}/providers.json"
+		exit "${E_CONFIG:-11}"
+	fi
+
 	pushd "$SB_SUB" >/dev/null
-	if ! "$PY" main.py; then
+	if ! "$PY" main.py --template_index=0; then
 		_rollback_logic "订阅更新失败"
+		rm -f "$SB_SUB/providers.json" 2>/dev/null || true
 		popd >/dev/null
 		exit "${E_CONFIG:-11}"
 	fi
 	popd >/dev/null
+	# 立即清理副本，防止订阅 token 留存于 sing-box-subscribe 目录
+	rm -f "$SB_SUB/providers.json" 2>/dev/null || true
 else
 	log_warn "未找到 sing-box-subscribe 目录，跳过节点更新"
 fi

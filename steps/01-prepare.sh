@@ -149,6 +149,7 @@ download_bpf_object() {
 	fi
 
 	log_info "Installing eBPF runtime dependencies: ${bpf_pkgs[*]}..."
-	apt-get install -y --no-install-recommends "${bpf_pkgs[@]}" 2>/dev/null || \
+	# P1 修复：改用 _run 以支持 DRY_RUN 模式并保留 dpkg 锁重试逻辑；去掉 2>/dev/null 使错误可见
+	_run apt-get install -y --no-install-recommends "${bpf_pkgs[@]}" || \
 		log_warn "eBPF dependency install failed, TC redirect may not work"
 }

@@ -263,7 +263,7 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 		fi
 	fi
 
-	# Persist deployment config (secrets excluded)
+	# Persist deployment config（敏感 token 写入 .credentials 目录，不留存于此文件）
 	mkdir -p /usr/local/etc/sing-box
 	cat >"$DEPLOYMENT_CONFIG" <<EOF
 MAIN_IFACE="$MAIN_IFACE"
@@ -273,7 +273,6 @@ RECOMMENDED_TUN_MTU="$RECOMMENDED_TUN_MTU"
 HAS_IPV6="$HAS_IPV6"
 DEFAULT_REGION="$DEFAULT_REGION"
 AIRPORT_TAGS="${AIRPORT_TAGS[*]}"
-AIRPORT_URLS_STR="${AIRPORT_URLS[*]}"
 NEXTDNS_ID="$NEXTDNS_ID"
 DASHBOARD_PORT="$DASHBOARD_PORT"
 ENABLE_DASHBOARD="$ENABLE_DASHBOARD"
@@ -281,9 +280,19 @@ IS_DESKTOP="$IS_DESKTOP"
 SUBSTORE_MODE="$SUBSTORE_MODE"
 SUBSTORE_COLLECTION_NAME="${SUBSTORE_COLLECTION_NAME:-MySubs}"
 EOF
-	
+
 	# Restrict config file permissions
 	chmod 600 "$DEPLOYMENT_CONFIG"
+
+	# P1 修复：首次安装时同步将订阅 URL（含 token）迁移至 credentials 目录，
+	#          与 upgrade 模式的迁移逻辑保持一致，避免 token 明文留存于 deployment_config。
+	local _cred_dir_init="/usr/local/etc/sing-box/.credentials"
+	mkdir -p "$_cred_dir_init"
+	chmod 700 "$_cred_dir_init"
+	if [ ${#AIRPORT_URLS[@]} -gt 0 ]; then
+		printf '%s' "${AIRPORT_URLS[*]}" > "$_cred_dir_init/airport_urls"
+		chmod 600 "$_cred_dir_init/airport_urls"
+	fi
 	
 	# Collect optional residential proxy info
 	if [ "$AUTO_YES" -eq 0 ]; then

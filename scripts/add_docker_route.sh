@@ -10,15 +10,30 @@ TEMPLATE="/usr/local/etc/sing-box/config_template.json"
 AUTO_YES=0
 EBPF_TC_MODE=0
 
-# 读取部署配置
-if [ -f "/usr/local/etc/sing-box/.deployment_config" ]; then
-  # 收紧正则，禁止反引号、$() 等执行命令的扩展
-  if grep -qE '`|\$\(' "/usr/local/etc/sing-box/.deployment_config"; then
-    echo "[!] 部署配置格式异常，包含非法字符，停止加载" >&2
-    exit 1
+# P1 修复：使用与其他脚本一致的 _safe_source_deployment_config 进行白名单校验，
+#           替代原先仅检测反引号和 $() 的弱正则。
+_SCRIPT_SELF="$(readlink -f "$0")"
+for _lib_path in "$(dirname "$_SCRIPT_SELF")/../lib/utils.sh" \
+                 "/usr/local/etc/sing-box/lib/utils.sh"; do
+  if [ -f "$_lib_path" ]; then
+    # shellcheck source=/dev/null
+    source "$_lib_path"
+    break
   fi
-  # shellcheck source=/dev/null
-  source "/usr/local/etc/sing-box/.deployment_config"
+done
+
+if [ -f "/usr/local/etc/sing-box/.deployment_config" ]; then
+  if type _safe_source_deployment_config &>/dev/null; then
+    _safe_source_deployment_config "/usr/local/etc/sing-box/.deployment_config" || exit 1
+  else
+    # 降级：若 utils.sh 不可用，保留旧的弱检查
+    if grep -qE '`|\$\(' "/usr/local/etc/sing-box/.deployment_config"; then
+      echo "[!] 部署配置格式异常，包含非法字符，停止加载" >&2
+      exit 1
+    fi
+    # shellcheck source=/dev/null
+    source "/usr/local/etc/sing-box/.deployment_config"
+  fi
 fi
 
 while [[ $# -gt 0 ]]; do

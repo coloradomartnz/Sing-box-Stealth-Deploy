@@ -192,7 +192,8 @@ def _run_logic():
     for ob in outbounds:
         t = ob.get("type")
         tag = ob.get("tag", "")
-        if not tag or t in ("direct", "selector", "urltest"):
+        # P2 修复：同时排除 "block" 类型，防止其出现在 urltest 分组中
+        if not tag or t in ("direct", "block", "selector", "urltest"):
             continue
         if any(kw in tag for kw in EXCLUDE_KEYWORDS):
             continue

@@ -13,10 +13,9 @@ elif [ -f "/usr/local/etc/sing-box/lib/lock.sh" ]; then
   source "/usr/local/etc/sing-box/lib/lock.sh"
 fi
 
-# 获取锁，避免并行健康检查
-if type acquire_script_lock &>/dev/null; then
-  acquire_script_lock "/run/lock/singbox-healthcheck.lock" 30 || exit 0
-fi
+# 注意：锁在 __run_check 子进程中获取（见下方），而非外层调用
+# P0 修复：外层调用持锁后派生子进程，子进程无法获锁而 exit 0，
+#           导致 do_health_check() 从不执行。
 
 export FAILED_TITLE="sing-box 健康检查失败"
 export FAILED_BODY="代理服务异常，请检查"
@@ -142,6 +141,10 @@ send_notification() {
 }
 
 if [[ "${1:-}" == "__run_check" ]]; then
+  # 在真正执行检查的子进程中加锁，阻止并发实例（P0 修复）
+  if type acquire_script_lock &>/dev/null; then
+    acquire_script_lock "/run/lock/singbox-healthcheck.lock" 30 || exit 0
+  fi
   do_health_check
   exit $?
 fi

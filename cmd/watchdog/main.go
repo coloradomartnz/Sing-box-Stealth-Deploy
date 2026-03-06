@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -144,25 +148,49 @@ func calculateBackoffWithJitter(failures int, cfg Config) time.Duration {
 }
 
 func switchToFallback(ctx context.Context) {
-	// Call sing-box external control API: PUT /proxies/{group}
-	secret := os.Getenv("DASHBOARD_SECRET")
+	// P1 修复：从 Systemd Credentials 目录读取 secret（LoadCredential 注入）；
+	//          回退到 DASHBOARD_SECRET 环境变量（兼容旧部署）。
+	secret := ""
+	if credsDir := os.Getenv("CREDENTIALS_DIRECTORY"); credsDir != "" {
+		if data, err := os.ReadFile(filepath.Join(credsDir, "dash_secret")); err == nil {
+			secret = strings.TrimSpace(string(data))
+		}
+	}
 	if secret == "" {
-		slog.Warn("DASHBOARD_SECRET environment variable is empty. API call may fail.")
+		secret = os.Getenv("DASHBOARD_SECRET")
+	}
+	if secret == "" {
+		slog.Warn("DASHBOARD_SECRET not found in credentials or environment; Clash API call may be rejected.")
 	}
 
 	port := os.Getenv("DASHBOARD_PORT")
 	if port == "" {
-		port = "9090" // default
+		port = "9090"
 	}
+
+	// P0 修复：代理组 tag 和回退节点名均可通过环境变量覆盖；
+	//          默认值与 singbox_build_region_groups.py 生成的 tag 一致。
+	proxyGroup := os.Getenv("PROXY_GROUP_TAG")
+	if proxyGroup == "" {
+		proxyGroup = "🚀 节点选择"
+	}
+	fallbackNode := os.Getenv("WATCHDOG_FALLBACK_NODE")
+	if fallbackNode == "" {
+		fallbackNode = "🌏 全局自动"
+	}
+
+	apiURL := "http://127.0.0.1:" + port + "/proxies/" + url.PathEscape(proxyGroup)
+	body := fmt.Sprintf(`{"name":%q}`, fallbackNode)
 
 	cmd := exec.CommandContext(ctx, "curl", "-sf", "-X", "PUT",
 		"-H", "Authorization: Bearer "+secret,
-		"http://127.0.0.1:"+port+"/proxies/auto-select",
-		"-d", `{"name":"fallback-node"}`)
+		"-H", "Content-Type: application/json",
+		"-d", body,
+		apiURL)
 
 	if err := cmd.Run(); err != nil {
-		slog.Error("Failed to trigger API fallback", "error", err)
+		slog.Error("Failed to trigger API fallback", "error", err, "group", proxyGroup, "node", fallbackNode)
 	} else {
-		slog.Info("Successfully triggered auto-select fallback node.")
+		slog.Info("Successfully triggered fallback node selection.", "group", proxyGroup, "node", fallbackNode)
 	}
 }
