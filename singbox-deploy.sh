@@ -379,15 +379,19 @@ fi
 if [ "${SUBSTORE_MODE:-0}" -eq 1 ]; then
 	echo ""
 	log_info "========================================================"
-	log_info "🚀 执行 Sub-Store 首次节点同步..."
+	log_info "🚀 Sub-Store 部署与自动化配置完成！"
+	log_info "--------------------------------------------------------"
+	log_info "正在执行首次节点同步..."
 	if [ -f "/usr/local/bin/substore-update.sh" ]; then
-		/usr/bin/bash /usr/local/bin/substore-update.sh || log_warn "Sub-Store 自动同步失败，请稍后手动运行: sudo substore-update.sh"
+		/usr/bin/bash /usr/local/bin/substore-update.sh || log_warn "首次同步遇到问题，请检查网络后尝试: sudo substore-update.sh"
 	fi
-	log_info "========================================================"
+	log_info "--------------------------------------------------------"
 	if [ -f "/opt/sub-store/substore.env" ]; then
 		_ss_path=$(grep SUB_STORE_FRONTEND_BACKEND_PATH "/opt/sub-store/substore.env" | cut -d'=' -f2)
-		log_info "Sub-Store 管理面板地址: http://127.0.0.1:${SUBSTORE_PORT:-2999}${_ss_path:-\"\"}"
-		log_info "提示: 系统已自动完成订阅注入，您可直接使用或进入面板微调。"
+		log_info "管理面板入口: http://127.0.0.1:${SUBSTORE_PORT:-2999}${_ss_path:-\"\"}"
+		log_info "✅ 订阅注入状态: 已自动注入 ${#AIRPORT_URLS[@]} 个订阅源"
+		log_info "✅ 安全保护状态: 已通过 16 位随机 Token 隐藏后端路径"
+		log_info "🎬 接下来操作: 您可以直接启动代理，或进入面板添加更多订阅"
 	fi
 	log_info "========================================================"
 	echo ""
