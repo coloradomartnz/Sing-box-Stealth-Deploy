@@ -224,12 +224,21 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 		HAS_IPV6=0
 	fi
 
+	# Detect desktop environment
 	detect_desktop
-	
-	# Collect subscription URLs (skip in Sub-Store mode)
-	if [ "${SUBSTORE_MODE:-0}" -eq 0 ]; then
-		collect_subscription_urls
+
+	# Sub-Store configuration (Move to here, before subscription collection)
+	if [ "$AUTO_YES" -eq 0 ]; then
+		read -r -p "Enable Sub-Store subscription management? [y/N]: " SUBSTORE_YN_INPUT
+		if [[ "$SUBSTORE_YN_INPUT" =~ ^[Yy]$ ]]; then
+			SUBSTORE_MODE=1
+			read -r -p "  Sub-Store collection name [default: MySubs]: " SUBSTORE_COLL_INPUT
+			SUBSTORE_COLLECTION_NAME=${SUBSTORE_COLL_INPUT:-MySubs}
+		fi
 	fi
+	
+	# Collect subscription URLs (Required for both modes now)
+	collect_subscription_urls
 	
 	# Dashboard configuration
 	if [ "$AUTO_YES" -eq 1 ]; then
@@ -254,16 +263,6 @@ if [ "$UPGRADE_MODE" -eq 0 ]; then
 		fi
 	fi
 
-	# Sub-Store configuration
-	if [ "$AUTO_YES" -eq 0 ]; then
-		read -r -p "Enable Sub-Store subscription management? [y/N]: " SUBSTORE_YN_INPUT
-		if [[ "$SUBSTORE_YN_INPUT" =~ ^[Yy]$ ]]; then
-			SUBSTORE_MODE=1
-			read -r -p "  Sub-Store collection name [default: MySubs]: " SUBSTORE_COLL_INPUT
-			SUBSTORE_COLLECTION_NAME=${SUBSTORE_COLL_INPUT:-MySubs}
-		fi
-	fi
-	
 	# Persist deployment config (secrets excluded)
 	mkdir -p /usr/local/etc/sing-box
 	cat >"$DEPLOYMENT_CONFIG" <<EOF
@@ -380,16 +379,16 @@ fi
 if [ "${SUBSTORE_MODE:-0}" -eq 1 ]; then
 	echo ""
 	log_info "========================================================"
-	log_info "Sub-Store management panel: http://127.0.0.1:${SUBSTORE_PORT:-2999}"
-	if [ -f "/opt/sub-store/substore.env" ]; then
-		# Extract random path token
-		_ss_path=$(grep SUB_STORE_FRONTEND_BACKEND_PATH "/opt/sub-store/substore.env" | cut -d'=' -f2)
-		log_info "  Backend path: ${_ss_path:-\"not generated\"}"
-		log_info "  Full URL: http://127.0.0.1:${SUBSTORE_PORT:-2999}${_ss_path:-\"\"}"
+	log_info "🚀 执行 Sub-Store 首次节点同步..."
+	if [ -f "/usr/local/bin/substore-update.sh" ]; then
+		/usr/bin/bash /usr/local/bin/substore-update.sh || log_warn "Sub-Store 自动同步失败，请稍后手动运行: sudo substore-update.sh"
 	fi
-	log_info "[IMPORTANT] No proxy nodes configured yet (direct connection mode)"
-	log_info "  1. Open the panel above and create a collection named '${SUBSTORE_COLLECTION_NAME:-MySubs}'"
-	log_info "  2. After adding subscriptions, run: sudo substore-update.sh"
+	log_info "========================================================"
+	if [ -f "/opt/sub-store/substore.env" ]; then
+		_ss_path=$(grep SUB_STORE_FRONTEND_BACKEND_PATH "/opt/sub-store/substore.env" | cut -d'=' -f2)
+		log_info "Sub-Store 管理面板地址: http://127.0.0.1:${SUBSTORE_PORT:-2999}${_ss_path:-\"\"}"
+		log_info "提示: 系统已自动完成订阅注入，您可直接使用或进入面板微调。"
+	fi
 	log_info "========================================================"
 	echo ""
 fi

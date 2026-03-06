@@ -65,6 +65,51 @@ EOF
 	chown substore:substore "$env_file"
 	chmod 600 "$env_file"
 
+	# Generate sub-store-2.json to pre-load subscriptions (Zero-config)
+	local storage_file="${SUBSTORE_DATA_DIR:-/usr/local/etc/sub-store}/sub-store-2.json"
+	if [ ! -f "$storage_file" ]; then
+		log_info "Pre-configuring Sub-Store subscriptions and collections..."
+		
+		# Build subs array
+		local subs_json="[]"
+		local sub_names=()
+		for i in "${!AIRPORT_URLS[@]}"; do
+			local name="${AIRPORT_TAGS[$i]:-sub_$((i+1))}"
+			local url="${AIRPORT_URLS[$i]}"
+			sub_names+=("\"$name\"")
+			subs_json=$(jq -n --arg name "$name" --arg url "$url" --argjson existing "$subs_json" \
+				'$existing + [{"name": $name, "url": $url, "source": "remote"}]')
+		done
+		
+		# Build collections array
+		local coll_name="${SUBSTORE_COLLECTION_NAME:-MySubs}"
+		local subs_ref_json
+		subs_ref_json=$(printf ",%s" "${sub_names[@]}")
+		subs_ref_json="[${subs_ref_json:1}]"
+		
+		local coll_json
+		coll_json=$(jq -n --arg name "$coll_name" --argjson subs "$subs_ref_json" \
+			'[{"name": $name, "subscriptions": $subs}]')
+			
+		# Assemble final JSON
+		jq -n \
+			--argjson subs "$subs_json" \
+			--argjson coll "$coll_json" \
+			'{
+				"schemaVersion": "2.0",
+				"subs": $subs,
+				"collections": $coll,
+				"artifacts": [],
+				"files": [],
+				"rules": [],
+				"tokens": [],
+				"settings": {}
+			}' > "$storage_file"
+			
+		chown substore:substore "$storage_file"
+		chmod 600 "$storage_file"
+	fi
+
 	# Install config update script
 	if [ -f "$(dirname "$0")/scripts/substore-update.sh" ]; then
 		install -m 755 "$(dirname "$0")/scripts/substore-update.sh" /usr/local/bin/substore-update.sh

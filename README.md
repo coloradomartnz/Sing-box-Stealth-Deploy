@@ -93,6 +93,27 @@ sudo ./singbox-deploy.sh --upgrade
 
 ---
 
+## Sub-Store 订阅管理 (高级)
+
+如果您通过 `--substore` 参数启用了 Sub-Store 模式，脚本将自动部署 Sub-Store 服务作为订阅预处理层。
+
+### 1. 访问面板
+部署成功后，脚本会打印一个带有随机令牌的 URL（例如 `http://127.0.0.1:2999/xxxx`）。
+> [!TIP]
+> 如果您是在远程服务器部署，可以使用 SSH 隧道通过本地访问：`ssh -L 2999:127.0.0.1:2999 user@server-ip`
+
+### 2. 配置步骤
+1. 打开浏览器进入面板。
+2. 创建一个名为 `MySubs` 的集合（Collection）。
+3. 在集合中添加您的机场订阅。
+4. 在服务器执行命令同步节点：
+   ```bash
+   sudo substore-update.sh
+   ```
+   该操作会拉取 Sub-Store 合并后的节点，渲染配置并热重载 sing-box。
+
+---
+
 ## 环境要求
 
 - **操作系统**: 推荐使用较新内核的发行版，如 Ubuntu 22.04+ (24.04 尤佳) 或 Debian 11+，以确保 eBPF 及 systemd 获得最佳支持。

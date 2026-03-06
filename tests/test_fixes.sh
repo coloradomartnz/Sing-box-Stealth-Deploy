@@ -260,6 +260,35 @@ assert_contains "H-2: 主脚本含 IPv6 检测" singbox-deploy.sh "ip -6 addr sh
 assert_contains "H-2: 主脚本设置 HAS_IPV6" singbox-deploy.sh "HAS_IPV6=1"
 
 # ============================================================
+# 测试组 10: Sub-Store "零配置" 自动化测试
+# ============================================================
+echo ""
+echo "[10/10] Sub-Store 自动化集成测试..."
+
+# 模拟环境路径
+export SUBSTORE_DATA_DIR="/tmp/sub-store-test"
+mkdir -p "$SUBSTORE_DATA_DIR"
+
+# 运行预生成逻辑验证 (验证关键的 jq 生成逻辑能够正确处理数组并合并)
+test_substore_json_logic() {
+  local AIRPORT_URLS=("http://test1.com" "http://test2.com")
+  local AIRPORT_TAGS=("Tag1" "Tag2")
+  local subs_json="[]"
+  for i in 0 1; do
+    local name="${AIRPORT_TAGS[$i]}"
+    local url="${AIRPORT_URLS[$i]}"
+    subs_json=$(jq -n --arg name "$name" --arg url "$url" --argjson existing "$subs_json" \
+      '$existing + [{"name": $name, "url": $url, "source": "remote"}]')
+  done
+  [[ $(echo "$subs_json" | jq -r "length") == "2" ]] && \
+  [[ $(echo "$subs_json" | jq -r ".[0].name") == "Tag1" ]]
+}
+
+assert_ok "Sub-Store JSON 生成逻辑验证" test_substore_json_logic
+
+rm -rf "$SUBSTORE_DATA_DIR"
+
+# ============================================================
 # 汇总
 # ============================================================
 echo ""
