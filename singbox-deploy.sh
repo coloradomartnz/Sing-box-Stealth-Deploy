@@ -295,7 +295,7 @@ EOF
 
 	# P1 修复：首次安装时同步将订阅 URL（含 token）迁移至 credentials 目录，
 	#          与 upgrade 模式的迁移逻辑保持一致，避免 token 明文留存于 deployment_config。
-	local _cred_dir_init="/usr/local/etc/sing-box/.credentials"
+	_cred_dir_init="/usr/local/etc/sing-box/.credentials"
 	mkdir -p "$_cred_dir_init"
 	chmod 700 "$_cred_dir_init"
 	if [ ${#AIRPORT_URLS[@]} -gt 0 ]; then

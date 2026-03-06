@@ -105,9 +105,9 @@ acquire_lock() {
 			# Extract existing command via printf/eval-safe method
 			local _existing_fn
 			_existing_fn=$(trap -p EXIT | awk -F"'" 'NF>=2{print $2}' 2>/dev/null || true)
-			if [ -n "$_existing_fn" ] && [[ ! "$_existing_fn" =~ _lock_dispatch_cleanup ]]; then
+			if [ -n "$_existing_fn" ] && [[ "$_existing_fn" != *"_lock_dispatch_cleanup"* ]]; then
 				# Register existing handler into hook array too, then set single dispatcher
-				if [[ ! " ${_GLOBAL_EXIT_HOOKS[*]:-} " =~ " $_existing_fn " ]]; then
+				if [[ " ${_GLOBAL_EXIT_HOOKS[*]:-} " != *" $_existing_fn "* ]]; then
 					_GLOBAL_EXIT_HOOKS+=("$_existing_fn")
 				fi
 			fi
@@ -122,8 +122,8 @@ acquire_lock() {
 		if [[ "$_current_int" != *"_lock_dispatch_cleanup"* ]]; then
 			local _existing_int_fn
 			_existing_int_fn=$(trap -p INT | awk -F"'" 'NF>=2{print $2}' 2>/dev/null || true)
-			if [ -n "$_existing_int_fn" ] && [[ ! "$_existing_int_fn" =~ _lock_dispatch_cleanup ]]; then
-				if [[ ! " ${_GLOBAL_EXIT_HOOKS[*]:-} " =~ " $_existing_int_fn " ]]; then
+			if [ -n "$_existing_int_fn" ] && [[ "$_existing_int_fn" != *"_lock_dispatch_cleanup"* ]]; then
+				if [[ " ${_GLOBAL_EXIT_HOOKS[*]:-} " != *" $_existing_int_fn "* ]]; then
 					_GLOBAL_EXIT_HOOKS+=("$_existing_int_fn")
 				fi
 			fi
