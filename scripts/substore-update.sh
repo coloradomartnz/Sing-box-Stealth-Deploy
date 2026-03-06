@@ -12,8 +12,10 @@ SHARED_LIB_DIR="/usr/local/etc/sing-box/lib"
 
 # 加载公共库（优先开发环境，其次生产路径）
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-if [ -d "$SCRIPT_DIR/../lib" ]; then
+if [ -d "$SCRIPT_DIR/../lib" ] && [ -f "$SCRIPT_DIR/../lib/globals.sh" ]; then
     SHARED_LIB_DIR="$SCRIPT_DIR/../lib"
+elif [ -d "/usr/local/etc/sing-box/lib" ] && [ -f "/usr/local/etc/sing-box/lib/globals.sh" ]; then
+    SHARED_LIB_DIR="/usr/local/etc/sing-box/lib"
 fi
 
 for _lib in globals.sh utils.sh lock.sh service.sh; do
@@ -40,16 +42,14 @@ if [ "${SUBSTORE_MODE:-0}" -ne 1 ]; then
 fi
 
 # 1. 解析面板挂载的鉴权路径
-ss_path=""
-if [ -f "/opt/sub-store/substore.env" ]; then
-    ss_path=$(grep SUB_STORE_FRONTEND_BACKEND_PATH "/opt/sub-store/substore.env" | cut -d'=' -f2 || true)
-fi
+# C-02 修复: 移除不必要的 ss_path 前缀，后端 API 直接在根路径提供服务
 
 # E-05 修复: 等待 Sub-Store 服务就绪，避免冷启动竞态
+# 注意: 后端 API 在 2999 端口根路径，不受 SUB_STORE_FRONTEND_BACKEND_PATH 影响
 log_info "等待 Sub-Store 服务就绪..."
 _substore_ready=0
 for _i in $(seq 1 15); do
-    if curl -sf "http://127.0.0.1:${SUBSTORE_PORT:-2999}${ss_path}/api/utils/env" >/dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:${SUBSTORE_PORT:-2999}/api/utils/env" >/dev/null 2>&1; then
         _substore_ready=1
         break
     fi
@@ -62,7 +62,7 @@ fi
 
 # 2. 构建下载目标地址
 COLLECTION_NAME="${SUBSTORE_COLLECTION_NAME:-MySubs}"
-DOWNLOAD_URL="http://127.0.0.1:${SUBSTORE_PORT:-2999}${ss_path}/download/${COLLECTION_NAME}?target=sing-box"
+DOWNLOAD_URL="http://127.0.0.1:${SUBSTORE_PORT:-2999}/download/${COLLECTION_NAME}?target=sing-box"
 
 log_info "从 Sub-Store 拉取节点组合 [${COLLECTION_NAME}]..."
 log_info "🔗 接口地址: $DOWNLOAD_URL"

@@ -45,10 +45,24 @@ deploy_step_09() {
 	chown -R substore:substore "${SUBSTORE_DATA_DIR:-/usr/local/etc/sub-store}"
 	chmod 700 "${SUBSTORE_DATA_DIR:-/usr/local/etc/sub-store}"
 
-	# Download Sub-Store bundle
-	log_info "Downloading Sub-Store release bundle..."
+	# Download Sub-Store release bundle
+	log_info "Downloading Sub-Store backend release bundle..."
 	_run curl -fsSL "https://github.com/sub-store-org/Sub-Store/releases/latest/download/sub-store.bundle.js" \
 		-o "${SUBSTORE_DIR:-/opt/sub-store}/sub-store.bundle.js"
+
+	# Download and Deploy Sub-Store Frontend (Fix 404 Dashboard issue)
+	log_info "Deploying Sub-Store Frontend Dashboard..."
+	local _fe_dir="${SUBSTORE_DIR:-/opt/sub-store}/frontend"
+	local _fe_zip="/tmp/substore-frontend.zip"
+	_run mkdir -p "$_fe_dir"
+	if ! _run curl -fsSL --connect-timeout 10 --max-time 120 \
+		-o "$_fe_zip" "https://github.com/sub-store-org/Sub-Store-Front-End/releases/latest/download/dist.zip"; then
+		log_error "Failed to download Sub-Store Frontend assets"
+		return 1
+	fi
+	_run unzip -o "$_fe_zip" -d "$_fe_dir"
+	_run rm -f "$_fe_zip"
+
 	chown -R substore:substore "${SUBSTORE_DIR:-/opt/sub-store}"
 
 	# Generate auth token and env file
@@ -60,7 +74,16 @@ deploy_step_09() {
 		cat >"$env_file" <<EOF
 SUB_STORE_FRONTEND_BACKEND_PATH=/${rand_token}
 SUB_STORE_DATA_BASE_PATH=${SUBSTORE_DATA_DIR:-/usr/local/etc/sub-store}
+SUB_STORE_BACKEND_API_PORT=${SUBSTORE_PORT:-2999}
+SUB_STORE_BACKEND_MERGE=true
+SUB_STORE_FRONTEND_PATH=$_fe_dir
 EOF
+	else
+		# Ensure necessary variables exist in current env
+		if ! grep -q "SUB_STORE_BACKEND_MERGE" "$env_file"; then
+			echo "SUB_STORE_BACKEND_MERGE=true" >> "$env_file"
+			echo "SUB_STORE_FRONTEND_PATH=$_fe_dir" >> "$env_file"
+		fi
 	fi
 	chown substore:substore "$env_file"
 	chmod 600 "$env_file"

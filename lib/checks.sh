@@ -76,7 +76,7 @@ check_network() {
 
 install_missing_tools() {
 	log_info "Checking required tools..."
-	local tools=(curl git python3 python3-venv jq)
+	local tools=(curl git python3 python3-venv jq unzip)
 	local missing=()
 	for cmd in "${tools[@]}"; do
 		if [[ "$cmd" == "python3-venv" ]]; then
