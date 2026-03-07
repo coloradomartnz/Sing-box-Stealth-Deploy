@@ -131,10 +131,12 @@ do_check() {
 
 	# 7. 网络连通性
 	echo "[8/10] 网络连通性检查..."
-	if curl -fsSL -m 5 "http://223.5.5.5" >/dev/null 2>&1; then
-		echo "  ✓ 直连 HTTP 正常"
+	if curl -fsSL -m 5 "https://www.baidu.com" >/dev/null 2>&1; then
+		echo "  ✓ 直连 HTTP 正常 (baidu.com)"
+	elif curl -fsSL -m 5 "http://connectivitycheck.platform.hicloud.com" >/dev/null 2>&1; then
+		echo "  ✓ 直连 HTTP 正常 (hicloud 备用)"
 	elif ping -c1 -W2 "223.5.5.5" >/dev/null 2>&1; then
-		echo "  ⚠ HTTP 不通但 ICMP 正常（可能有端口限制）"
+		echo "  ⚠ HTTP 不通 but ICMP 正常（可能有端口限制）"
 	else
 		echo "  ✗ 网络不可达"
 		fail=1

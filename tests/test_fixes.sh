@@ -284,7 +284,24 @@ test_substore_json_logic() {
   [[ $(echo "$subs_json" | jq -r ".[0].name") == "Tag1" ]]
 }
 
+# 測試 URL 驗證邏輯
+test_url_validation() {
+  local url_pattern='^https?://'
+  local cmd_pattern='(chmod|chown|rm|sudo|systemctl|bash|python|sh|cd|mkdir|cp|mv)[[:space:]]'
+  
+  local valid_url="https://example.com/sub"
+  local invalid_url="not_a_url"
+  local cmd_str="chmod +x script.sh"
+  
+  # 模擬 singbox-deploy.sh 中的邏輯 (Bash 匹配)
+  [[ "$valid_url" =~ $url_pattern ]] || return 1
+  [[ ! "$invalid_url" =~ $url_pattern ]] || return 1
+  [[ "$cmd_str" =~ $cmd_pattern ]] || return 1
+  return 0
+}
+
 assert_ok "Sub-Store JSON 生成逻辑验证" test_substore_json_logic
+assert_ok "訂閱 URL 與 指令攔截邏輯驗證" test_url_validation
 
 rm -rf "$SUBSTORE_DATA_DIR"
 

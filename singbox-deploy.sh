@@ -143,6 +143,11 @@ install_missing_tools || { log_error "Required tool installation failed"; exit "
 # Acquire deployment lock
 acquire_deploy_lock "$DEPLOY_LOCK" "$DEPLOY_LOCK_PID" 300 || exit "${E_LOCK:-12}"
 
+# Flush STDIN buffer before interactive collection to prevent stale/pasted input contamination
+if [ -t 0 ]; then
+	while read -r -t 0; do read -r _unused; done
+fi
+
 # Collect subscription info (skip in upgrade mode)
 
 # Initialize global arrays
@@ -161,6 +166,19 @@ collect_subscription_urls() {
 			read -rs -p "Subscription URL [$(( ${#AIRPORT_URLS[@]} + 1 ))]: " url
 			echo  # -s suppresses newline
 			[ -z "$url" ] && break
+
+			# URL 基礎驗證：必須包含 http:// 或 https://
+			if [[ ! "$url" =~ ^https?:// ]]; then
+				log_warn "  [SKIP] Invalid URL format (missing http/https): ${url:0:30}..."
+				continue
+			fi
+
+			# 關鍵詞黑名單：攔截明顯的 shell 指令（防誤粘貼）
+			if [[ "$url" =~ (chmod|chown|rm|sudo|systemctl|bash|python|sh|cd|mkdir|cp|mv)[[:space:]] ]]; then
+				log_warn "  [SKIP] Input looks like a shell command, skipping: ${url:0:30}..."
+				continue
+			fi
+
 			AIRPORT_URLS+=("$url")
 			# Extract tag from URL name parameter using bash native regex (no fork)
 			# Pattern stored in variable to avoid bash parsing issues with & inside [[ =~ ]]
@@ -174,7 +192,7 @@ collect_subscription_urls() {
 		done
 		set -o history 2>/dev/null || true
 		if [ ${#AIRPORT_URLS[@]} -eq 0 ]; then
-			log_error "At least one subscription URL is required"
+			log_error "At least one valid subscription URL is required"
 			exit "${E_CONFIG:-11}"
 		fi
 		
@@ -182,7 +200,7 @@ collect_subscription_urls() {
 		read -r -p "NextDNS config ID (optional): " NEXTDNS_ID
 	else
 		# Read from environment variable in auto mode
-		if [ -z "${AIRPORT_URLS_STR:-}" ] && [ ${#AIRPORT_URLS[@]} -eq 0 ]; then
+		if [ -z "${AIRPORT_URLS_STR:-}" ] && [ ${#AIRPORT_URLS[@]} -0 ]; then
 			log_error "AIRPORT_URLS_STR environment variable required in auto mode"
 			exit "${E_CONFIG:-11}"
 		fi

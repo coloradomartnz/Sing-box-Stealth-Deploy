@@ -55,7 +55,12 @@
         ]
       },
       {
-        "rule_set": ["geosite-cn", "geoip-cn"],
+        "rule_set": ["geosite-cn"],
+        "action": "route",
+        "server": "local"
+      },
+      {
+        "rule_set": ["geoip-cn"],
         "action": "route",
         "server": "local"
       },
@@ -156,12 +161,17 @@
       { "action": "hijack-dns", "protocol": ["dns"] },
       { "action": "hijack-dns", "port": [53] },
       {
-        "type": "logical",
-        "mode": "and",
-        "rules": [
-          { "rule_set": "geosite-cn" },
-          { "rule_set": "geoip-cn" }
-        ],
+        "ip_cidr": ["223.5.5.5/32", "119.29.29.29/32", "1.1.1.1/32", "8.8.8.8/32"],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "domain": ["dns.alidns.com", "dns.google", "cloudflare-dns.com"],
+        "action": "route",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": ["geosite-cn", "geoip-cn"],
         "action": "route",
         "outbound": "direct"
       },
