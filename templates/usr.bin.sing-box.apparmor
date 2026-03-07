@@ -6,8 +6,8 @@
 
   capability net_admin,
   capability net_bind_service,
-  # 安全团队审计意见: TUN 模式的 sing-box 实际不需要 net_raw 权限，剥离以缩小被利用风险
-  # capability net_raw,
+  # 允许 net_raw 权限以支持 ICMP/Ping 健康检查 (若追求极致安全可保持禁用)
+  capability net_raw,
   # 允许访问 TUN 设备节点（否则可能导致 tun 初始化失败）
   /dev/net/tun rw,
 
@@ -51,9 +51,8 @@
   #
   # 2. 保留 netlink raw（管理 TUN/路由表所需，如 RTNETLINK 消息）
   #
-  # 3. 新增：拒绝 raw socket（防止 AF_INET SOCK_RAW 内核提权或 LAN 扫描欺骗）
-  #    注：与现有 `# capability net_raw` 被注释形成防御纵深
-  deny network raw,
+  # 54: 新增：允许 raw socket 以支持 ICMP 健康检查
+  # deny network raw,
 
   # 4. 新增：拒绝 packet socket（AF_PACKET = 直接访问数据链路层）
   #    防止攻击者通过代理进程构造 ARP spoofing / L2 帧注入

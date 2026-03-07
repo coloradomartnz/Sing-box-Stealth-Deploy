@@ -1,24 +1,36 @@
 [Unit]
 Description=sing-box Watchdog 2.0 (Go sidecar)
-After=sing-box.service
+After=network-online.target sing-box.service
+Wants=network-online.target
 BindsTo=sing-box.service
 ConditionPathExists=/usr/local/etc/sing-box/.deployment_config
 
 [Service]
 Type=simple
+# 允许第一次启动时该文件尚未存在，避免 EnvironmentFile 与 ExecStartPre 形成死结
+EnvironmentFile=-/run/singbox-watchdog.env
+
 # 仅注入 watchdog 实际使用的变量，不加载整个 deployment_config（减少进程环境暴露面）
 # DASHBOARD_PORT 从 deployment_config 中提取单行以避免全量导入
-ExecStartPre=/bin/bash -c 'port=$(grep "^DASHBOARD_PORT=" /usr/local/etc/sing-box/.deployment_config 2>/dev/null | cut -d= -f2 | tr -d "\""); echo "DASHBOARD_PORT=${port:-9090}" > /run/singbox-watchdog.env'
-EnvironmentFile=/run/singbox-watchdog.env
+ExecStartPre=/bin/sh -ec 'port=$(grep "^DASHBOARD_PORT=" /usr/local/etc/sing-box/.deployment_config 2>/dev/null | cut -d= -f2 | tr -d "\""); printf "DASHBOARD_PORT=%s\n" "${port:-9090}" > /run/singbox-watchdog.env'
+
 # secret 通过 LoadCredential 安全注入，Go 代码从 CREDENTIALS_DIRECTORY/dash_secret 读取
 LoadCredential=dash_secret:/usr/local/etc/sing-box/.credentials/dash_secret
+
 # 代理组名和回退节点名与 singbox_build_region_groups.py 保持一致
 Environment=PROXY_GROUP_TAG=🚀 节点选择
 Environment=WATCHDOG_FALLBACK_NODE=🌏 全局自动
+
 ExecStart=/usr/local/bin/singbox-watchdog
 Restart=always
-RestartSec=5
-KillMode=process
+RestartSec=5s
+
+# 安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
 # Jitter handles poll cycles, wait max bounds internally.
 WatchdogSec=120
 

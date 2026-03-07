@@ -200,6 +200,44 @@ do_check() {
 	fi
 
 	echo ""
+	echo "========================================="
+	echo "  诊断结论汇总 (Diagnostic Engine)"
+	echo "========================================="
+
+	local advice=()
+
+	# 模式1: Watchdog 启动死锁 (EnvironmentFile 缺少)
+	if systemctl is-enabled singbox-watchdog.service &>/dev/null && ! systemctl is-active singbox-watchdog.service &>/dev/null; then
+		if journalctl -u singbox-watchdog.service -n 20 2>/dev/null | grep -q "Failed to load environment files"; then
+			advice+=("!!! [Watchdog] 检测到启动死锁 (EnvironmentFile 冲突)。建议：更新 Unit 文件添加 '-' 前缀并执行 daemon-reload (已在最新版修复)。")
+		fi
+	fi
+
+	# 模式2: AppArmor 权限请求 (net_raw)
+	if [ -f /var/log/syslog ] && grep -q "usr.bin.sing-box" /var/log/syslog 2>/dev/null | grep -q "capname=\"net_raw\""; then
+		advice+=("!!! [AppArmor] 检测到 net_raw 权限被拦截，会导致 Ping 检查失效。请更新 AppArmor 配置 (已在最新版修复)。")
+	elif dmesg 2>/dev/null | grep "usr.bin.sing-box" | grep -q "capname=\"net_raw\""; then
+		advice+=("!!! [AppArmor] 检测到 net_raw 权限被拦截。")
+	fi
+
+	# 模式3: 代理已启动但 Google 不通
+	if systemctl is-active sing-box.service &>/dev/null && ! curl -fsSL -m 5 "https://www.google.com" >/dev/null 2>&1; then
+		advice+=("!!! [Network] sing-box 运行中但无法访问 Google。建议：1. 检查 providers.json 节点是否可用 2. 运行 'tail -f /var/log/sing-box.log'。")
+	fi
+
+	if [ ${#advice[@]} -eq 0 ]; then
+		if [ $fail -eq 0 ]; then
+			echo -e "  ${GREEN}✓ 未发现明显异常，系统运行良好。${NC}"
+		else
+			echo -e "  ${YELLOW}⚠ 发现部分异常，但未匹配到已知故障模式。请查看上方详细输出。${NC}"
+		fi
+	else
+		for msg in "${advice[@]}"; do
+			echo -e "${RED}$msg${NC}"
+		done
+	fi
+
+	echo ""
 	if [ $fail -eq 0 ]; then
 		echo -e "${GREEN}✅ 所有检查通过${NC}"
 	else
