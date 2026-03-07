@@ -49,7 +49,7 @@ fi
 log_info "等待 Sub-Store 服务就绪..."
 _substore_ready=0
 for _i in $(seq 1 15); do
-    if curl -sf "http://127.0.0.1:${SUBSTORE_PORT:-2999}/api/utils/env" >/dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:${SUBSTORE_PORT:-2999}/${SUBSTORE_TOKEN:-}/api/utils/env" >/dev/null 2>&1; then
         _substore_ready=1
         break
     fi
@@ -62,7 +62,7 @@ fi
 
 # 2. 构建下载目标地址
 COLLECTION_NAME="${SUBSTORE_COLLECTION_NAME:-MySubs}"
-DOWNLOAD_URL="http://127.0.0.1:${SUBSTORE_PORT:-2999}/download/${COLLECTION_NAME}?target=sing-box"
+DOWNLOAD_URL="http://127.0.0.1:${SUBSTORE_PORT:-2999}/${SUBSTORE_TOKEN:-}/download/${COLLECTION_NAME}?target=sing-box"
 
 log_info "从 Sub-Store 拉取节点组合 [${COLLECTION_NAME}]..."
 log_info "🔗 接口地址: $DOWNLOAD_URL"

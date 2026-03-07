@@ -78,11 +78,20 @@ SUB_STORE_BACKEND_API_PORT=${SUBSTORE_PORT:-2999}
 SUB_STORE_BACKEND_MERGE=true
 SUB_STORE_FRONTEND_PATH=$_fe_dir
 EOF
+		# Persist token to global config for management scripts
+		sed -i '/^SUBSTORE_TOKEN=/d' "$DEPLOYMENT_CONFIG" 2>/dev/null || true
+		echo "SUBSTORE_TOKEN=\"$rand_token\"" >> "$DEPLOYMENT_CONFIG"
 	else
 		# Ensure necessary variables exist in current env
 		if ! grep -q "SUB_STORE_BACKEND_MERGE" "$env_file"; then
 			echo "SUB_STORE_BACKEND_MERGE=true" >> "$env_file"
 			echo "SUB_STORE_FRONTEND_PATH=$_fe_dir" >> "$env_file"
+		fi
+		# Back-fill token if missing from deployment config
+		if ! grep -q "^SUBSTORE_TOKEN=" "$DEPLOYMENT_CONFIG"; then
+			local _existing_token
+			_existing_token=$(grep "SUB_STORE_FRONTEND_BACKEND_PATH" "$env_file" | cut -d'/' -f2)
+			[ -n "$_existing_token" ] && echo "SUBSTORE_TOKEN=\"$_existing_token\"" >> "$DEPLOYMENT_CONFIG"
 		fi
 	fi
 	chown substore:substore "$env_file"
