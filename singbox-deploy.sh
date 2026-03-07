@@ -200,7 +200,7 @@ collect_subscription_urls() {
 		read -r -p "NextDNS config ID (optional): " NEXTDNS_ID
 	else
 		# Read from environment variable in auto mode
-		if [ -z "${AIRPORT_URLS_STR:-}" ] && [ ${#AIRPORT_URLS[@]} -0 ]; then
+		if [[ -z "${AIRPORT_URLS_STR:-}" ]] && [[ ${#AIRPORT_URLS[@]} -eq 0 ]]; then
 			log_error "AIRPORT_URLS_STR environment variable required in auto mode"
 			exit "${E_CONFIG:-11}"
 		fi
