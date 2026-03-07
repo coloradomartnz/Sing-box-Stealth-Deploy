@@ -26,3 +26,6 @@ singbox-watchdog
 # Docker test artifacts
 Dockerfile.test
 singbox_check.*
+
+# Temporary debug / reproduction scripts
+repro_debug.sh

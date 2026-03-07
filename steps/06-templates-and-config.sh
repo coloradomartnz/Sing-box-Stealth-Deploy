@@ -134,6 +134,7 @@ deploy_step_06() {
 		   --arg bootstrap_dns "$bootstrap_dns" \
 		   --arg remote_tag "${REMOTE_MAIN_TAG:-remote_cf}" \
 		   --arg dash_port "${DASHBOARD_PORT:-9090}" \
+		   --arg dash_secret "${safe_secret}" \
 		   --arg mtu "${RECOMMENDED_TUN_MTU:-1400}" \
 		   --arg lan_subnet "${LAN_SUBNET:-192.168.0.0/16}" \
 		   --arg res_host "${RES_HOST:-127.0.0.1}" \
@@ -141,16 +142,17 @@ deploy_step_06() {
 		  '{
 		     tun_address: ($tun_address | fromjson),
 		     dns_strategy: ($dns_strategy | fromjson),
-		     bootstrap_dns: $bootstrap_dns, 
-		     remote_tag: $remote_tag, 
+		     bootstrap_dns: $bootstrap_dns,
+		     remote_tag: $remote_tag,
 		     dash_port: $dash_port,
-		     mtu: ($mtu | tonumber), 
-		     lan_subnet: $lan_subnet, 
+		     dash_secret: $dash_secret,
+		     mtu: ($mtu | tonumber),
+		     lan_subnet: $lan_subnet,
 		     res_host: $res_host,
 		     res_port: ($res_port | tonumber)
 		   }' > "$vars_json"
 
-		# Phase 2: Lossless JQ object injection (no secrets injected here)
+		# Phase 2: Lossless JQ object injection (dashboard config including secret)
 		jq --slurpfile vars "$vars_json" \
 		   --argjson cr "$cr_arr" \
 		   --argjson cd "$cd_arr" \
@@ -159,6 +161,7 @@ deploy_step_06() {
 		   '
 		   ($vars[0]) as $v |
 		   .experimental.clash_api.external_controller = "127.0.0.1:\($v.dash_port)" |
+		   .experimental.clash_api.secret = $v.dash_secret |
 		   .dns.strategy = $v.dns_strategy |
 		   (.dns.servers[] | select(.tag == "bootstrap").server) = $v.bootstrap_dns |
 		   (.dns.rules[] | select(.rule_set == ["geosite-geolocation-!cn"]).server) = $v.remote_tag |

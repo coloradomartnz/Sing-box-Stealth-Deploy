@@ -180,6 +180,26 @@ echo "[5/9] 模板与配置测试..."
 assert_contains "H-3: Dashboard 绑定 127.0.0.1" templates/config_template.json.tpl "127.0.0.1"
 assert_not_contains "H-3: 不再绑定 0.0.0.0" templates/config_template.json.tpl "0.0.0.0:\${DASHBOARD_PORT}"
 
+# P1: DASHBOARD_SECRET 注入验证
+echo ""
+echo "  --- P1: DASHBOARD_SECRET 注入 config.json ---"
+test_dashboard_secret_injection() {
+  local expected_secret="test_custom_secret_abc123"
+  local result
+  result=$(jq --arg s "$expected_secret" \
+      '.experimental.clash_api.secret = $s' \
+      templates/config_template.json.tpl | \
+      jq -r '.experimental.clash_api.secret')
+  [[ "$result" == "$expected_secret" ]]
+}
+assert_ok "P1: Dashboard secret 可被 jq 正确注入" test_dashboard_secret_injection
+assert_contains "P1: config_template.json.tpl 含 secret 字段" \
+  templates/config_template.json.tpl '"secret"'
+assert_contains "P1: step06 含 clash_api.secret 注入逻辑" \
+  steps/06-templates-and-config.sh '.experimental.clash_api.secret'
+assert_contains "P1: step06 含 dash_secret 参数传递" \
+  steps/06-templates-and-config.sh 'dash_secret'
+
 # ============================================================
 # 测试组 6: 安全性测试 (H-4, C-1)
 # ============================================================

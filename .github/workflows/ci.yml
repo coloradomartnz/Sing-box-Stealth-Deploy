@@ -181,6 +181,9 @@ jobs:
     - name: Run audit fix regression tests
       run: bash tests/test_audit_fixes.sh
 
+    - name: Run URL validation logic tests
+      run: bash tests/test_url_logic.sh
+
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
