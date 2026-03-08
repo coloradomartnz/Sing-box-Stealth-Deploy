@@ -20,6 +20,7 @@ singbox-watchdog
 
 # System/IDE
 .DS_Store
+.srclight/
 .idea/
 .vscode/
 
